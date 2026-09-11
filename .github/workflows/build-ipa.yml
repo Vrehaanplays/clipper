@@ -1,0 +1,79 @@
+name: Build unsigned IPA
+
+# Produces an UNSIGNED Clipper.ipa as a downloadable artifact.
+# AltStore does the signing on your side with your own Apple ID, so no certificates,
+# no provisioning profiles and no secrets are needed here.
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          latest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Clipper.xcodeproj
+        run: xcodegen generate --spec project.yml
+
+      - name: Build (unsigned, Release, device)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Clipper.xcodeproj \
+            -scheme Clipper \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            clean build
+
+      - name: Package into an IPA
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release-iphoneos/Clipper.app"
+          test -d "$APP" || { echo "No .app produced"; exit 1; }
+          # An IPA is just a zip with the app inside a top-level Payload/ folder.
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          rm -f Clipper.ipa
+          zip -qry Clipper.ipa Payload
+          unzip -l Clipper.ipa | head -20
+          ls -lh Clipper.ipa
+
+      - name: Sanity-check the bundle
+        run: |
+          set -euo pipefail
+          PLIST="Payload/Clipper.app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$PLIST"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clipper-unsigned-ipa
+          path: Clipper.ipa
+          if-no-files-found: error
+          retention-days: 30
