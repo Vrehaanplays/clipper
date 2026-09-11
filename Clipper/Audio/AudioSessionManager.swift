@@ -57,7 +57,7 @@ final class AudioSessionManager: NSObject {
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+            options: [.allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
         )
         // Speech does not need 48 kHz, but matching common hardware avoids a resampler.
         try? session.setPreferredSampleRate(48_000)
