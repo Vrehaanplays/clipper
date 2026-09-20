@@ -25,16 +25,16 @@ final class MessyCorpusTests: XCTestCase {
         let store = try await loaded()
         let conversations = await store.conversations()
 
-        XCTAssertGreaterThanOrEqual(conversations.count, 3,
+        await XCTAssertGreaterThanOrEqual(conversations.count, 3,
                                     "Three clusters of speech, separated by long gaps")
         for conversation in conversations {
-            XCTAssertGreaterThan(conversation.segmentCount, 0)
-            XCTAssertGreaterThanOrEqual(conversation.endedAt, conversation.startedAt)
+            await XCTAssertGreaterThan(conversation.segmentCount, 0)
+            await XCTAssertGreaterThanOrEqual(conversation.endedAt, conversation.startedAt)
         }
 
         // No conversation may span the big silence.
         for conversation in conversations {
-            XCTAssertLessThan(conversation.duration, 2_000,
+            await XCTAssertLessThan(conversation.duration, 2_000,
                               "A conversation that spans a 45-minute gap is a grouping bug")
         }
     }
@@ -43,12 +43,12 @@ final class MessyCorpusTests: XCTestCase {
         let store = try await loaded()
         let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
 
-        XCTAssertEqual(lines.count, MessyCorpus.lines.count)
-        XCTAssertTrue(lines.allSatisfy { $0.conversationID != nil },
+        await XCTAssertEqual(lines.count, MessyCorpus.lines.count)
+        await XCTAssertTrue(lines.allSatisfy { $0.conversationID != nil },
                       "An orphaned transcript line is unreachable from every screen")
 
         var seen = Set<UUID>()
-        for line in lines { XCTAssertTrue(seen.insert(line.id).inserted) }
+        for line in lines { await XCTAssertTrue(seen.insert(line.id).inserted) }
     }
 
     // MARK: - Speakers
@@ -58,12 +58,12 @@ final class MessyCorpusTests: XCTestCase {
         let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
         let unknown = lines.filter(\.speakerIsUnknown)
 
-        XCTAssertEqual(unknown.count, 2, "Both 'Unknown voice' lines stay unattributed")
-        XCTAssertTrue(unknown.allSatisfy { $0.speakerConfidence == 0 })
-        XCTAssertTrue(unknown.allSatisfy { $0.speakerLabel == "Unknown voice" })
+        await XCTAssertEqual(unknown.count, 2, "Both 'Unknown voice' lines stay unattributed")
+        await XCTAssertTrue(unknown.allSatisfy { $0.speakerConfidence == 0 })
+        await XCTAssertTrue(unknown.allSatisfy { $0.speakerLabel == "Unknown voice" })
 
         let speakers = await store.speakers()
-        XCTAssertEqual(speakers.count, 2, "Only Alex and Sam are real clusters")
+        await XCTAssertEqual(speakers.count, 2, "Only Alex and Sam are real clusters")
     }
 
     func testCorrectingASpeakerNameUpdatesEveryLine() async throws {
@@ -72,8 +72,8 @@ final class MessyCorpusTests: XCTestCase {
 
         await store.renameSpeaker(id: alex.id, to: "Alexandra")
         let lines = await store.recentLines(speakerID: alex.id, limit: 50)
-        XCTAssertFalse(lines.isEmpty)
-        XCTAssertTrue(lines.allSatisfy { $0.speakerLabel == "Alexandra" })
+        await XCTAssertFalse(lines.isEmpty)
+        await XCTAssertTrue(lines.allSatisfy { $0.speakerLabel == "Alexandra" })
     }
 
     // MARK: - Low-confidence handling
@@ -85,10 +85,10 @@ final class MessyCorpusTests: XCTestCase {
         let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
         let weak = lines.filter(\.isLowConfidence)
 
-        XCTAssertGreaterThanOrEqual(weak.count, 3)
-        XCTAssertTrue(weak.allSatisfy { $0.assertion == .uncertain },
+        await XCTAssertGreaterThanOrEqual(weak.count, 3)
+        await XCTAssertTrue(weak.allSatisfy { $0.assertion == .uncertain },
                       "Low-confidence speech must not be presented as stated fact")
-        XCTAssertTrue(weak.contains { $0.text.contains("a roarer") },
+        await XCTAssertTrue(weak.contains { $0.text.contains("a roarer") },
                       "The mishearing is evidence of what was heard, and is kept")
     }
 
@@ -98,7 +98,7 @@ final class MessyCorpusTests: XCTestCase {
         let store = try await loaded()
         let search = SearchService(store: store)
         let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
-        let misheard = try XCTUnwrap(lines.first { $0.text.contains("a roarer") })
+        let misheard = try await XCTUnwrap(lines.first { $0.text.contains("a roarer") })
 
         let corrected = "aurora needs the migration script first"
         await store.editTranscript(id: misheard.id, text: corrected)
@@ -116,10 +116,10 @@ final class MessyCorpusTests: XCTestCase {
                                                  embedding: []))
 
         let roarer = await search.search(SearchQuery(text: "roarer"))
-        XCTAssertTrue(roarer.hits.isEmpty, "The corrected wording must replace the old postings")
+        await XCTAssertTrue(roarer.hits.isEmpty, "The corrected wording must replace the old postings")
 
         let migration = await search.search(SearchQuery(text: "migration script"))
-        XCTAssertTrue(migration.hits.contains { $0.refID == misheard.id })
+        await XCTAssertTrue(migration.hits.contains { $0.refID == misheard.id })
     }
 
     // MARK: - Memories
@@ -132,14 +132,14 @@ final class MessyCorpusTests: XCTestCase {
 
         let memories = await store.memories(limit: 200)
         let titles = memories.map { $0.title.lowercased() }
-        XCTAssertFalse(memories.isEmpty, "A whole conversation must yield something")
+        await XCTAssertFalse(memories.isEmpty, "A whole conversation must yield something")
 
         // No two current memories may be textually identical.
-        XCTAssertEqual(Set(titles).count, titles.count,
+        await XCTAssertEqual(Set(titles).count, titles.count,
                        "Duplicate memories mean the dedupe key is not doing its job")
 
         let reinforced = memories.filter { $0.occurrenceCount > 1 }
-        XCTAssertFalse(reinforced.isEmpty, "Repetition must strengthen rather than duplicate")
+        await XCTAssertFalse(reinforced.isEmpty, "Repetition must strengthen rather than duplicate")
     }
 
     /// The headline behaviour: the decision reverses 65 minutes later. The old decision must
@@ -159,18 +159,18 @@ final class MessyCorpusTests: XCTestCase {
         }
 
         for old in superseded {
-            let replacement = try await XCTUnwrap(await store.memory(id: try XCTUnwrap(old.supersededByID)))
-            XCTAssertGreaterThan(replacement.revision, old.revision)
-            XCTAssertEqual(replacement.supersedesID, old.id)
-            XCTAssertFalse(old.title.isEmpty, "The old statement is still readable")
+            let replacement = try await XCTUnwrap(await store.memory(id: try await XCTUnwrap(old.supersededByID)))
+            await XCTAssertGreaterThan(replacement.revision, old.revision)
+            await XCTAssertEqual(replacement.supersedesID, old.id)
+            await XCTAssertFalse(old.title.isEmpty, "The old statement is still readable")
 
             let chain = await store.revisionChain(for: replacement.id)
-            XCTAssertGreaterThanOrEqual(chain.count, 2)
-            XCTAssertEqual(chain.first?.id, old.id, "Oldest first, so 'what changed' reads forwards")
+            await XCTAssertGreaterThanOrEqual(chain.count, 2)
+            await XCTAssertEqual(chain.first?.id, old.id, "Oldest first, so 'what changed' reads forwards")
         }
 
         let contradictions = await store.contradictions(includeResolved: true, limit: 50)
-        XCTAssertFalse(contradictions.isEmpty, "A reversal is a contradiction worth surfacing")
+        await XCTAssertFalse(contradictions.isEmpty, "A reversal is a contradiction worth surfacing")
     }
 
     func testEveryMemoryPointsBackAtRealTranscriptLines() async throws {
@@ -181,10 +181,10 @@ final class MessyCorpusTests: XCTestCase {
             sessionID: try await XCTUnwrap(await store.sessions().first).id).map(\.id))
 
         for memory in await store.memories(limit: 200) where memory.sourceKind == .transcriptSegment {
-            XCTAssertFalse(memory.sourceIDs.isEmpty,
+            await XCTAssertFalse(memory.sourceIDs.isEmpty,
                            "'\(memory.title)' has no evidence and should have been unsupported")
             for sourceID in memory.sourceIDs {
-                XCTAssertTrue(lineIDs.contains(sourceID),
+                await XCTAssertTrue(lineIDs.contains(sourceID),
                               "A memory cites a transcript line that does not exist")
             }
         }
@@ -195,7 +195,7 @@ final class MessyCorpusTests: XCTestCase {
         _ = await MessyCorpus.closeAndBuildMemories(in: store)
 
         for memory in await store.memories(limit: 200) {
-            XCTAssertFalse(memory.title.lowercased().contains("uh yeah okay"),
+            await XCTAssertFalse(memory.title.lowercased().contains("uh yeah okay"),
                            "Filler must not be promoted to a curated memory")
         }
     }
@@ -205,16 +205,16 @@ final class MessyCorpusTests: XCTestCase {
     func testEntitiesFromMessySpeechBecomeNodesWithEvidence() async throws {
         let store = try await loaded()
         let nodes = await store.nodes(limit: 100)
-        XCTAssertFalse(nodes.isEmpty)
+        await XCTAssertFalse(nodes.isEmpty)
 
         // "aurora" is the dominant topic and must be one node, not several.
         let aurora = nodes.filter { Tokenizer.normalizeName($0.name) == "aurora" }
-        XCTAssertLessThanOrEqual(aurora.count, 1, "One name, one node per kind")
+        await XCTAssertLessThanOrEqual(aurora.count, 1, "One name, one node per kind")
 
         if let aurora = aurora.first {
-            XCTAssertGreaterThan(aurora.mentionCount, 1)
+            await XCTAssertGreaterThan(aurora.mentionCount, 1)
             let subgraph = try await XCTUnwrap(await store.subgraph(around: aurora.id))
-            XCTAssertEqual(subgraph.focus.id, aurora.id)
+            await XCTAssertEqual(subgraph.focus.id, aurora.id)
         }
     }
 
@@ -223,12 +223,12 @@ final class MessyCorpusTests: XCTestCase {
     func testSearchFindsTheTopicDespiteTheMess() async throws {
         let store = try await loaded()
         let hits = await SearchService(store: store).search(SearchQuery(text: "aurora")).hits
-        XCTAssertGreaterThanOrEqual(hits.count, 4)
+        await XCTAssertGreaterThanOrEqual(hits.count, 4)
 
         // The mumble must not out-rank a real statement.
         let mumbleRank = hits.firstIndex { $0.snippet.lowercased().contains("uh yeah") }
         if let mumbleRank {
-            XCTAssertGreaterThan(mumbleRank, 0, "Filler must never be the top result")
+            await XCTAssertGreaterThan(mumbleRank, 0, "Filler must never be the top result")
         }
     }
 
@@ -240,8 +240,8 @@ final class MessyCorpusTests: XCTestCase {
         query.speakerIDs = [sam.id]
         let hits = await SearchService(store: store).search(query).hits
 
-        XCTAssertFalse(hits.isEmpty)
-        XCTAssertTrue(hits.allSatisfy { $0.speakerLabels.contains("Sam") || $0.speakerLabels.isEmpty })
+        await XCTAssertFalse(hits.isEmpty)
+        await XCTAssertTrue(hits.allSatisfy { $0.speakerLabels.contains("Sam") || $0.speakerLabels.isEmpty })
     }
 
     // MARK: - Summarisation
@@ -252,7 +252,7 @@ final class MessyCorpusTests: XCTestCase {
         let store = try await loaded()
         let conversation = try await XCTUnwrap(await store.conversations().first)
         let lines = await store.transcriptLines(conversationID: conversation.id)
-        XCTAssertFalse(lines.isEmpty)
+        await XCTAssertFalse(lines.isEmpty)
 
         let input = SummarizationInput(lines: lines.map { "\($0.speakerLabel): \($0.text)" },
                                        scope: .conversation,
@@ -262,13 +262,13 @@ final class MessyCorpusTests: XCTestCase {
                                        periodEnd: conversation.endedAt)
 
         let draft = try await XCTUnwrap(await ExtractiveSummarizer().summarize(input))
-        XCTAssertEqual(draft.generator, "extractive")
-        XCTAssertFalse(draft.title.isEmpty)
+        await XCTAssertEqual(draft.generator, "extractive")
+        await XCTAssertFalse(draft.title.isEmpty)
 
         let spoken = lines.map { $0.text.lowercased() }
         for bullet in draft.bullets {
             let stripped = bullet.lowercased()
-            XCTAssertTrue(spoken.contains { $0.contains(stripped) || stripped.contains($0) },
+            await XCTAssertTrue(spoken.contains { $0.contains(stripped) || stripped.contains($0) },
                           "Bullet '\(bullet)' was not in the transcript")
         }
     }
@@ -280,7 +280,7 @@ final class MessyCorpusTests: XCTestCase {
                                        speakerLabels: ["Alex"],
                                        periodStart: Date(),
                                        periodEnd: Date())
-        XCTAssertFalse(input.isSubstantial)
+        await XCTAssertFalse(input.isSubstantial)
         await XCTAssertNil(await ExtractiveSummarizer().summarize(input),
                      "There is nothing to summarise; inventing something would be worse")
     }
@@ -292,12 +292,12 @@ final class MessyCorpusTests: XCTestCase {
         let store = try await loaded()
         let first = await MessyCorpus.closeAndBuildMemories(in: store)
         let countAfterFirst = await store.memories(limit: 500).count
-        XCTAssertEqual(countAfterFirst, Set(first.map(\.id)).count)
+        await XCTAssertEqual(countAfterFirst, Set(first.map(\.id)).count)
 
         // Rebuild from the same extractions: every candidate collides with its own key.
         _ = await MessyCorpus.closeAndBuildMemories(in: store)
         let countAfterSecond = await store.memories(limit: 500).count
-        XCTAssertEqual(countAfterSecond, countAfterFirst,
+        await XCTAssertEqual(countAfterSecond, countAfterFirst,
                        "Reprocessing must reinforce, never duplicate")
     }
 }

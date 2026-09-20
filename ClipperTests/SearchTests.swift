@@ -196,7 +196,7 @@ final class SearchServiceTests: XCTestCase {
         let store = try TestStore.make()
         _ = await index(store, title: "Aurora", text: "we chose postgres")
         let outcome = await service(store).search(SearchQuery(text: "   "))
-        XCTAssertTrue(outcome.hits.isEmpty)
+        await XCTAssertTrue(outcome.hits.isEmpty)
     }
 
     func testAMatchingTermFindsItsDocument() async throws {
@@ -206,10 +206,10 @@ final class SearchServiceTests: XCTestCase {
         _ = await index(store, title: "Sailing", text: "I want to learn to sail this summer")
 
         let outcome = await service(store).search(SearchQuery(text: "postgres"))
-        XCTAssertEqual(outcome.hits.count, 1)
-        XCTAssertEqual(outcome.hits.first?.refID, refID)
-        XCTAssertTrue(outcome.hits.first?.matchedTokens.contains("postgres") ?? false)
-        XCTAssertGreaterThan(outcome.lexicalCandidates, 0)
+        await XCTAssertEqual(outcome.hits.count, 1)
+        await XCTAssertEqual(outcome.hits.first?.refID, refID)
+        await XCTAssertTrue(outcome.hits.first?.matchedTokens.contains("postgres") ?? false)
+        await XCTAssertGreaterThan(outcome.lexicalCandidates, 0)
     }
 
     /// Re-indexing must replace the old postings, or a corrected transcript still matches
@@ -238,7 +238,7 @@ final class SearchServiceTests: XCTestCase {
                                text: "we talked about the quokka project today")
 
         let outcome = await service(store).search(SearchQuery(text: "quokka project"))
-        XCTAssertEqual(outcome.hits.first?.refID, rare,
+        await XCTAssertEqual(outcome.hits.first?.refID, rare,
                        "The document with the distinctive term must come first")
     }
 
@@ -252,9 +252,9 @@ final class SearchServiceTests: XCTestCase {
                                 at: old.addingTimeInterval(86_400 * 120), refID: UUID())
 
         let hits = await service(store).search(SearchQuery(text: "aurora deadline")).hits
-        XCTAssertEqual(hits.count, 2)
-        XCTAssertEqual(hits.first?.refID, newer)
-        XCTAssertEqual(hits.last?.refID, older)
+        await XCTAssertEqual(hits.count, 2)
+        await XCTAssertEqual(hits.first?.refID, newer)
+        await XCTAssertEqual(hits.last?.refID, older)
     }
 
     /// An exact phrase must beat the same words scattered apart.
@@ -267,7 +267,7 @@ final class SearchServiceTests: XCTestCase {
         _ = scattered
 
         let hits = await service(store).search(SearchQuery(text: "aurora deadline")).hits
-        XCTAssertEqual(hits.first?.refID, exact)
+        await XCTAssertEqual(hits.first?.refID, exact)
     }
 
     /// Low-confidence, uncertain lines are still findable — but they rank below solid ones.
@@ -279,9 +279,9 @@ final class SearchServiceTests: XCTestCase {
                                   confidence: 0.2, assertion: .uncertain)
 
         let hits = await service(store).search(SearchQuery(text: "aurora migration")).hits
-        XCTAssertEqual(hits.count, 2, "Uncertain evidence is still evidence")
-        XCTAssertEqual(hits.first?.refID, solid)
-        XCTAssertEqual(hits.last?.refID, mumbled)
+        await XCTAssertEqual(hits.count, 2, "Uncertain evidence is still evidence")
+        await XCTAssertEqual(hits.first?.refID, solid)
+        await XCTAssertEqual(hits.last?.refID, mumbled)
     }
 
     func testImportanceLiftsAMemoryAboveAPassingMention() async throws {
@@ -293,7 +293,7 @@ final class SearchServiceTests: XCTestCase {
         _ = passing
 
         let hits = await service(store).search(SearchQuery(text: "aurora")).hits
-        XCTAssertEqual(hits.first?.refID, important)
+        await XCTAssertEqual(hits.first?.refID, important)
     }
 
     func testKindFilterExcludesOtherKinds() async throws {
@@ -304,7 +304,7 @@ final class SearchServiceTests: XCTestCase {
         var query = SearchQuery(text: "aurora")
         query.kinds = [.memory]
         let hits = await service(store).search(query).hits
-        XCTAssertEqual(hits.map(\.refID), [memory])
+        await XCTAssertEqual(hits.map(\.refID), [memory])
     }
 
     func testSpeakerFilterExcludesOtherVoices() async throws {
@@ -406,9 +406,9 @@ final class SearchServiceTests: XCTestCase {
         for _ in 0..<3 { _ = await search.search(SearchQuery(text: "aurora")) }
 
         let report = await search.latencyReport()
-        XCTAssertEqual(report.samples, 3)
-        XCTAssertGreaterThan(report.mean, 0)
-        XCTAssertGreaterThanOrEqual(report.worst, report.mean)
+        await XCTAssertEqual(report.samples, 3)
+        await XCTAssertGreaterThan(report.mean, 0)
+        await XCTAssertGreaterThanOrEqual(report.worst, report.mean)
     }
 }
 
@@ -430,17 +430,17 @@ final class AnswerServiceTests: XCTestCase {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("what did we decide about the helicopter lease?")
 
-        XCTAssertTrue(answer.insufficientEvidence)
-        XCTAssertEqual(answer.assertion, .unsupported)
-        XCTAssertTrue(answer.chains.isEmpty)
-        XCTAssertFalse(answer.answer.isEmpty, "Saying nothing is not the same as saying 'I don't know'")
+        await XCTAssertTrue(answer.insufficientEvidence)
+        await XCTAssertEqual(answer.assertion, .unsupported)
+        await XCTAssertTrue(answer.chains.isEmpty)
+        await XCTAssertFalse(answer.answer.isEmpty, "Saying nothing is not the same as saying 'I don't know'")
     }
 
     func testAnEmptyStoreCannotAnswerAnything() async throws {
         let store = try TestStore.make()
         let answers = AnswerService(store: store, search: SearchService(store: store))
         let answer = await answers.answer("what did I say about aurora?")
-        XCTAssertTrue(answer.insufficientEvidence)
+        await XCTAssertTrue(answer.insufficientEvidence)
     }
 
     /// Every answer must be traceable back to a transcript line with a timestamp.
@@ -448,15 +448,15 @@ final class AnswerServiceTests: XCTestCase {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("what did we decide about aurora?")
 
-        XCTAssertFalse(answer.insufficientEvidence)
-        XCTAssertFalse(answer.chains.isEmpty, "An answer without a chain is an unsupported claim")
+        await XCTAssertFalse(answer.insufficientEvidence)
+        await XCTAssertFalse(answer.chains.isEmpty, "An answer without a chain is an unsupported claim")
 
-        let chain = try XCTUnwrap(answer.chains.first)
-        XCTAssertFalse(chain.leaf.text.isEmpty)
-        XCTAssertGreaterThan(chain.leaf.endedAt, chain.leaf.startedAt)
-        XCTAssertNotNil(chain.memory ?? chain.summary,
+        let chain = try await XCTUnwrap(answer.chains.first)
+        await XCTAssertFalse(chain.leaf.text.isEmpty)
+        await XCTAssertGreaterThan(chain.leaf.endedAt, chain.leaf.startedAt)
+        await XCTAssertNotNil(chain.memory ?? chain.summary,
                         "A chain starts at a memory or a summary")
-        XCTAssertNotNil(chain.conversation)
+        await XCTAssertNotNil(chain.conversation)
     }
 
     /// The audio is gone after the retention window; the chain must say so rather than
@@ -465,7 +465,7 @@ final class AnswerServiceTests: XCTestCase {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("what did we decide about aurora?")
         for chain in answer.chains where chain.audioURL == nil {
-            XCTAssertTrue(chain.audioExpired || chain.leaf.audioSegmentID == nil)
+            await XCTAssertTrue(chain.audioExpired || chain.leaf.audioSegmentID == nil)
         }
     }
 
@@ -473,10 +473,10 @@ final class AnswerServiceTests: XCTestCase {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("when did I first discuss aurora?")
 
-        XCTAssertFalse(answer.insufficientEvidence)
-        let earliest = try XCTUnwrap(answer.hits.first)
+        await XCTAssertFalse(answer.insufficientEvidence)
+        let earliest = try await XCTUnwrap(answer.hits.first)
         for hit in answer.hits {
-            XCTAssertLessThanOrEqual(earliest.timestamp, hit.timestamp)
+            await XCTAssertLessThanOrEqual(earliest.timestamp, hit.timestamp)
         }
     }
 
@@ -484,9 +484,9 @@ final class AnswerServiceTests: XCTestCase {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("find every time I mentioned aurora")
 
-        XCTAssertGreaterThan(answer.hits.count, 2)
+        await XCTAssertGreaterThan(answer.hits.count, 2)
         let timestamps = answer.hits.map(\.timestamp)
-        XCTAssertEqual(timestamps, timestamps.sorted(), "An enumeration is chronological")
+        await XCTAssertEqual(timestamps, timestamps.sorted(), "An enumeration is chronological")
     }
 
     /// "What changed?" must surface the supersession, not just the latest statement.
@@ -494,30 +494,30 @@ final class AnswerServiceTests: XCTestCase {
         let (store, answers) = try await loadedStore()
         let answer = await answers.answer("what changed about the aurora database?")
 
-        XCTAssertFalse(answer.answer.isEmpty)
+        await XCTAssertFalse(answer.answer.isEmpty)
         // Either the answer cites a superseded revision, or the store holds one to cite.
         let superseded = await store.memories(includeSuperseded: true)
             .filter { $0.supersededByID != nil }
-        XCTAssertFalse(superseded.isEmpty || answer.chains.isEmpty,
+        await XCTAssertFalse(superseded.isEmpty || answer.chains.isEmpty,
                        "A change question needs a history to answer from")
     }
 
     func testAnswersAreLabelledWithHowTheyRelateToTheEvidence() async throws {
         let (_, answers) = try await loadedStore()
         let answer = await answers.answer("what did we decide about aurora?")
-        XCTAssertTrue([.stated, .summarised, .inferred, .uncertain, .contradictory]
+        await XCTAssertTrue([.stated, .summarised, .inferred, .uncertain, .contradictory]
             .contains(answer.assertion))
-        XCTAssertFalse(answer.generator.isEmpty)
+        await XCTAssertFalse(answer.generator.isEmpty)
     }
 
     /// The parser must not need a model to turn a sentence into filters.
     func testQueryBuildingUsesTheLiveVocabulary() async throws {
         let (store, answers) = try await loadedStore()
         let speakers = await store.speakers()
-        XCTAssertFalse(speakers.isEmpty)
+        await XCTAssertFalse(speakers.isEmpty)
 
         let query = await answers.buildQuery(from: "what did Alex say about aurora")
-        XCTAssertFalse(query.speakerIDs.isEmpty, "A known name must become a filter")
+        await XCTAssertFalse(query.speakerIDs.isEmpty, "A known name must become a filter")
     }
 
     func testSearchThroughTheAnswerServiceFindsTheMishearing() async throws {
@@ -525,7 +525,7 @@ final class AnswerServiceTests: XCTestCase {
         // The corpus contains "a roarer needs the migration script" — a mishearing of
         // "aurora". Searching the literal words must still find it.
         let outcome = await answers.runSearch("migration script")
-        XCTAssertFalse(outcome.hits.isEmpty)
+        await XCTAssertFalse(outcome.hits.isEmpty)
     }
 }
 

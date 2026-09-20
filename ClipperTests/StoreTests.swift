@@ -35,9 +35,9 @@ final class StoreSchemaTests: XCTestCase {
     func testEmptyStoreReportsZeroes() async throws {
         let store = try TestStore.make()
         let stats = await store.stats()
-        XCTAssertEqual(stats.sessions, 0)
-        XCTAssertEqual(stats.memories, 0)
-        XCTAssertEqual(stats.pendingJobs, 0)
+        await XCTAssertEqual(stats.sessions, 0)
+        await XCTAssertEqual(stats.memories, 0)
+        await XCTAssertEqual(stats.pendingJobs, 0)
     }
 }
 
@@ -62,13 +62,13 @@ final class SessionStoreTests: XCTestCase {
         await store.endSession(id: id, at: start.addingTimeInterval(120))
 
         let session = try await XCTUnwrap(await store.sessions().first)
-        XCTAssertEqual(session.id, id)
-        XCTAssertEqual(session.speechSeconds, 6, accuracy: 0.001)
-        XCTAssertEqual(session.utteranceCount, 2)
-        XCTAssertEqual(session.interruptionCount, 1)
-        XCTAssertFalse(session.isOpen)
-        XCTAssertTrue(session.usedBuiltInMic)
-        XCTAssertEqual(session.duration, 120, accuracy: 0.001)
+        await XCTAssertEqual(session.id, id)
+        await XCTAssertEqual(session.speechSeconds, 6, accuracy: 0.001)
+        await XCTAssertEqual(session.utteranceCount, 2)
+        await XCTAssertEqual(session.interruptionCount, 1)
+        await XCTAssertFalse(session.isOpen)
+        await XCTAssertTrue(session.usedBuiltInMic)
+        await XCTAssertEqual(session.duration, 120, accuracy: 0.001)
     }
 
     /// The app can be killed mid-session. On the next launch those rows must be closed,
@@ -83,12 +83,12 @@ final class SessionStoreTests: XCTestCase {
                                      otherAudioPlaying: false)
         }
         let closed = await store.closeStrandedSessions()
-        XCTAssertEqual(closed, 3)
+        await XCTAssertEqual(closed, 3)
         let stillOpen = await store.sessions().filter(\.isOpen)
-        XCTAssertTrue(stillOpen.isEmpty)
+        await XCTAssertTrue(stillOpen.isEmpty)
         // Idempotent: a second bootstrap has nothing left to do.
         let again = await store.closeStrandedSessions()
-        XCTAssertEqual(again, 0)
+        await XCTAssertEqual(again, 0)
     }
 
     /// Rolling clips are a *reference* to a file the buffer owns. When the buffer deletes
@@ -108,11 +108,11 @@ final class SessionStoreTests: XCTestCase {
                                           sampleRate: 48_000)
         }
         var stats = await store.stats()
-        XCTAssertEqual(stats.audioSegments, 4)
+        await XCTAssertEqual(stats.audioSegments, 4)
 
         await store.reconcileRollingClips(existing: ["clip-2.m4a", "clip-3.m4a"])
         stats = await store.stats()
-        XCTAssertEqual(stats.audioSegments, 2, "Rows for deleted files must not survive")
+        await XCTAssertEqual(stats.audioSegments, 2, "Rows for deleted files must not survive")
     }
 
     /// Evidence is a different lifecycle: the row outlives the audio, and says so.
@@ -143,7 +143,7 @@ final class SessionStoreTests: XCTestCase {
                        "Expired audio must be reported as gone, not silently linked")
 
         let stats = await store.stats()
-        XCTAssertEqual(stats.audioSegments, 1, "The row itself stays, for provenance")
+        await XCTAssertEqual(stats.audioSegments, 1, "The row itself stays, for provenance")
     }
 
     func testDaysWithActivityAreDistinctAndDescending() async throws {
@@ -156,8 +156,8 @@ final class SessionStoreTests: XCTestCase {
             await store.endSession(id: id, at: day.addingTimeInterval(offset + 60))
         }
         let days = await store.daysWithActivity()
-        XCTAssertEqual(days.count, 2, "Two sessions on the same day are one day")
-        XCTAssertGreaterThan(days[0], days[1], "Newest first")
+        await XCTAssertEqual(days.count, 2, "Two sessions on the same day are one day")
+        await XCTAssertGreaterThan(days[0], days[1], "Newest first")
     }
 }
 
@@ -173,21 +173,21 @@ final class SpeakerStoreTests: XCTestCase {
         let sam = MessyCorpus.signature(for: "Sam")
 
         let first = try await XCTUnwrap(await store.attributeSpeaker(embedding: alex, seconds: 5))
-        XCTAssertTrue(first.isNewCluster)
-        XCTAssertEqual(first.sampleCount, 1)
+        await XCTAssertTrue(first.isNewCluster)
+        await XCTAssertEqual(first.sampleCount, 1)
 
         // Slightly perturbed — the same person never produces a bit-identical vector.
         let nudged = VectorMath.normalized(alex.enumerated().map { index, value in
             value + (index.isMultiple(of: 7) ? 0.01 : -0.005)
         })
         let second = try await XCTUnwrap(await store.attributeSpeaker(embedding: nudged, seconds: 5))
-        XCTAssertFalse(second.isNewCluster)
-        XCTAssertEqual(second.speakerID, first.speakerID)
-        XCTAssertEqual(second.sampleCount, 2)
+        await XCTAssertFalse(second.isNewCluster)
+        await XCTAssertEqual(second.speakerID, first.speakerID)
+        await XCTAssertEqual(second.sampleCount, 2)
 
         let other = try await XCTUnwrap(await store.attributeSpeaker(embedding: sam, seconds: 5))
-        XCTAssertTrue(other.isNewCluster)
-        XCTAssertNotEqual(other.speakerID, first.speakerID)
+        await XCTAssertTrue(other.isNewCluster)
+        await XCTAssertNotEqual(other.speakerID, first.speakerID)
 
         await XCTAssertEqual(await store.speakers().count, 2)
     }
@@ -195,7 +195,7 @@ final class SpeakerStoreTests: XCTestCase {
     func testEmptyEmbeddingProducesNoAttributionRatherThanAGuess() async throws {
         let store = try TestStore.make()
         let match = await store.attributeSpeaker(embedding: [], seconds: 5)
-        XCTAssertNil(match, "No features means unknown, not a made-up cluster")
+        await XCTAssertNil(match, "No features means unknown, not a made-up cluster")
         await XCTAssertTrue(await store.speakers().isEmpty)
     }
 
@@ -204,8 +204,8 @@ final class SpeakerStoreTests: XCTestCase {
         let match = try await XCTUnwrap(await store.attributeSpeaker(embedding: MessyCorpus.signature(for: "X"),
                                                                seconds: 5))
         let speaker = try await XCTUnwrap(await store.speaker(id: match.speakerID))
-        XCTAssertFalse(speaker.isNamed)
-        XCTAssertEqual(speaker.label, "Unknown voice")
+        await XCTAssertFalse(speaker.isNamed)
+        await XCTAssertEqual(speaker.label, "Unknown voice")
     }
 
     /// The naming prompt must not fire for a voice we heard once in passing.
@@ -250,9 +250,9 @@ final class SpeakerStoreTests: XCTestCase {
         await store.renameSpeaker(id: match.speakerID, to: "Alexandra")
 
         let speaker = try await XCTUnwrap(await store.speaker(id: match.speakerID))
-        XCTAssertEqual(speaker.displayName, "Alexandra")
-        XCTAssertTrue(speaker.isNamed)
-        XCTAssertTrue(speaker.previousNames.contains("Alex"),
+        await XCTAssertEqual(speaker.displayName, "Alexandra")
+        await XCTAssertTrue(speaker.isNamed)
+        await XCTAssertTrue(speaker.previousNames.contains("Alex"),
                       "A correction must leave a trail, not erase the mistake")
     }
 
@@ -290,8 +290,8 @@ final class SpeakerStoreTests: XCTestCase {
 
         await XCTAssertEqual(await store.speakers().count, 1)
         let line = try await XCTUnwrap(await store.transcriptLine(id: lineID))
-        XCTAssertEqual(line.speakerID, keep.speakerID)
-        XCTAssertEqual(line.speakerLabel, "Alex")
+        await XCTAssertEqual(line.speakerID, keep.speakerID)
+        await XCTAssertEqual(line.speakerLabel, "Alex")
     }
 
     func testReassigningASegmentToUnknownIsAllowed() async throws {
@@ -311,8 +311,8 @@ final class SpeakerStoreTests: XCTestCase {
 
         await store.reassignSpeaker(segmentID: lineID, to: nil)
         let line = try await XCTUnwrap(await store.transcriptLine(id: lineID))
-        XCTAssertNil(line.speakerID)
-        XCTAssertTrue(line.speakerIsUnknown)
+        await XCTAssertNil(line.speakerID)
+        await XCTAssertTrue(line.speakerIsUnknown)
     }
 }
 
@@ -368,11 +368,11 @@ final class ConversationStoreTests: XCTestCase {
                                        index: index)
             ids.insert(result.conversation)
         }
-        XCTAssertEqual(ids.count, 1)
+        await XCTAssertEqual(ids.count, 1)
 
         let conversation = try await XCTUnwrap(await store.conversations().first)
-        XCTAssertEqual(conversation.segmentCount, 5)
-        XCTAssertTrue(conversation.isOpen)
+        await XCTAssertEqual(conversation.segmentCount, 5)
+        await XCTAssertTrue(conversation.isOpen)
     }
 
     /// A long silence is a conversation boundary.
@@ -386,7 +386,7 @@ final class ConversationStoreTests: XCTestCase {
         let second = await addLine(store, session: session, at: 600, base: base,
                                    text: "long after the gap", index: 1)
 
-        XCTAssertNotEqual(first.conversation, second.conversation)
+        await XCTAssertNotEqual(first.conversation, second.conversation)
         await XCTAssertEqual(await store.conversations().count, 2)
     }
 
@@ -401,7 +401,7 @@ final class ConversationStoreTests: XCTestCase {
                                   text: "one", index: 0)
         let early = await addLine(store, session: session, at: 8, base: base,
                                   text: "two", index: 1, topicShift: true)
-        XCTAssertEqual(early.conversation, first.conversation,
+        await XCTAssertEqual(early.conversation, first.conversation,
                        "A shift two lines in is noise, not a new conversation")
 
         for index in 2..<5 {
@@ -410,7 +410,7 @@ final class ConversationStoreTests: XCTestCase {
         }
         let late = await addLine(store, session: session, at: 60, base: base,
                                  text: "completely different subject", index: 6, topicShift: true)
-        XCTAssertNotEqual(late.conversation, first.conversation)
+        await XCTAssertNotEqual(late.conversation, first.conversation)
     }
 
     func testEndingASessionClosesItsConversations() async throws {
@@ -421,9 +421,9 @@ final class ConversationStoreTests: XCTestCase {
 
         let closed = await store.closeConversations(sessionID: session,
                                                     at: base.addingTimeInterval(120))
-        XCTAssertEqual(closed.count, 1)
+        await XCTAssertEqual(closed.count, 1)
         let conversation = try await XCTUnwrap(await store.conversations().first)
-        XCTAssertFalse(conversation.isOpen)
+        await XCTAssertFalse(conversation.isOpen)
     }
 
     func testTranscriptEditsAreMarkedAndKeepTheOriginal() async throws {
@@ -435,8 +435,8 @@ final class ConversationStoreTests: XCTestCase {
 
         await store.editTranscript(id: result.line, text: "aurora needs the migration script")
         let line = try await XCTUnwrap(await store.transcriptLine(id: result.line))
-        XCTAssertEqual(line.text, "aurora needs the migration script")
-        XCTAssertTrue(line.wasEdited)
+        await XCTAssertEqual(line.text, "aurora needs the migration script")
+        await XCTAssertTrue(line.wasEdited)
     }
 
     func testTranscriptLinesPaginateInOrder() async throws {
@@ -452,11 +452,11 @@ final class ConversationStoreTests: XCTestCase {
 
         let firstPage = await store.transcriptLines(conversationID: conversationID, limit: 4, offset: 0)
         let secondPage = await store.transcriptLines(conversationID: conversationID, limit: 4, offset: 4)
-        XCTAssertEqual(firstPage.count, 4)
-        XCTAssertEqual(secondPage.count, 4)
-        XCTAssertEqual(firstPage.first?.text, "line 0")
-        XCTAssertEqual(secondPage.first?.text, "line 4")
-        XCTAssertTrue(Set(firstPage.map(\.id)).isDisjoint(with: Set(secondPage.map(\.id))))
+        await XCTAssertEqual(firstPage.count, 4)
+        await XCTAssertEqual(secondPage.count, 4)
+        await XCTAssertEqual(firstPage.first?.text, "line 0")
+        await XCTAssertEqual(secondPage.first?.text, "line 4")
+        await XCTAssertTrue(Set(firstPage.map(\.id)).isDisjoint(with: Set(secondPage.map(\.id))))
     }
 }
 
@@ -492,11 +492,11 @@ final class MemoryStoreTests: XCTestCase {
         let second = try await XCTUnwrap(await store.upsertMemory(
             candidate("Postgres for aurora", key: "k1", at: base.addingTimeInterval(600))))
 
-        XCTAssertEqual(first.id, second.id, "One claim, one row")
-        XCTAssertEqual(second.occurrenceCount, 2)
-        XCTAssertGreaterThan(second.confidence, first.confidence, "Repetition is evidence")
-        XCTAssertGreaterThan(second.lastSeenAt, second.firstSeenAt)
-        XCTAssertEqual(second.sourceIDs.count, 2, "Both sources are kept")
+        await XCTAssertEqual(first.id, second.id, "One claim, one row")
+        await XCTAssertEqual(second.occurrenceCount, 2)
+        await XCTAssertGreaterThan(second.confidence, first.confidence, "Repetition is evidence")
+        await XCTAssertGreaterThan(second.lastSeenAt, second.firstSeenAt)
+        await XCTAssertEqual(second.sourceIDs.count, 2, "Both sources are kept")
         await XCTAssertEqual(await store.memories().count, 1)
     }
 
@@ -517,25 +517,25 @@ final class MemoryStoreTests: XCTestCase {
                       kind: .decision, key: "decision:aurora", supersede: true,
                       at: base.addingTimeInterval(4_000))))
 
-        XCTAssertNotEqual(original.id, replacement.id)
-        XCTAssertEqual(replacement.supersedesID, original.id)
-        XCTAssertEqual(replacement.revision, original.revision + 1)
+        await XCTAssertNotEqual(original.id, replacement.id)
+        await XCTAssertEqual(replacement.supersedesID, original.id)
+        await XCTAssertEqual(replacement.revision, original.revision + 1)
 
         let refetchedOriginal = try await XCTUnwrap(await store.memory(id: original.id))
-        XCTAssertEqual(refetchedOriginal.supersededByID, replacement.id)
-        XCTAssertFalse(refetchedOriginal.isCurrent, "The old decision is history, not current")
+        await XCTAssertEqual(refetchedOriginal.supersededByID, replacement.id)
+        await XCTAssertFalse(refetchedOriginal.isCurrent, "The old decision is history, not current")
 
         // The old text is still readable — nothing was overwritten.
-        XCTAssertEqual(refetchedOriginal.title, "Use Postgres for aurora")
+        await XCTAssertEqual(refetchedOriginal.title, "Use Postgres for aurora")
 
         let chain = await store.revisionChain(for: replacement.id)
-        XCTAssertEqual(chain.count, 2)
-        XCTAssertEqual(chain.first?.id, original.id)
+        await XCTAssertEqual(chain.count, 2)
+        await XCTAssertEqual(chain.first?.id, original.id)
 
         let contradictions = await store.contradictions(includeResolved: false)
-        XCTAssertEqual(contradictions.count, 1)
-        XCTAssertEqual(contradictions.first?.earlier?.id, original.id)
-        XCTAssertEqual(contradictions.first?.later?.id, replacement.id)
+        await XCTAssertEqual(contradictions.count, 1)
+        await XCTAssertEqual(contradictions.first?.earlier?.id, original.id)
+        await XCTAssertEqual(contradictions.first?.later?.id, replacement.id)
     }
 
     /// Same key, different substance, but not a superseding kind: keep one row and drop the
@@ -552,7 +552,7 @@ final class MemoryStoreTests: XCTestCase {
                       detail: "completely unrelated wording about sailing lessons in june",
                       kind: .event, key: "event:deadline", at: base.addingTimeInterval(60))))
 
-        XCTAssertEqual(second.assertion, .uncertain,
+        await XCTAssertEqual(second.assertion, .uncertain,
                        "Conflicting detail must be labelled uncertain, not asserted")
         await XCTAssertEqual(await store.memories().count, 1)
     }
@@ -561,8 +561,8 @@ final class MemoryStoreTests: XCTestCase {
         let store = try TestStore.make()
         let memory = try await XCTUnwrap(await store.upsertMemory(
             candidate("Where did this come from", key: "orphan", sources: [])))
-        XCTAssertEqual(memory.assertion, .unsupported)
-        XCTAssertTrue(memory.isUnsupported)
+        await XCTAssertEqual(memory.assertion, .unsupported)
+        await XCTAssertTrue(memory.isUnsupported)
     }
 
     func testEmptyTitleOrKeyIsRejected() async throws {
@@ -580,12 +580,12 @@ final class MemoryStoreTests: XCTestCase {
                                                           title: "Postgres for aurora",
                                                           detail: "fixed the mishearing"))
 
-        XCTAssertNotEqual(edited.id, original.id)
-        XCTAssertTrue(edited.isUserEdited)
-        XCTAssertEqual(edited.assertion, .stated)
-        XCTAssertEqual(edited.supersedesID, original.id)
+        await XCTAssertNotEqual(edited.id, original.id)
+        await XCTAssertTrue(edited.isUserEdited)
+        await XCTAssertEqual(edited.assertion, .stated)
+        await XCTAssertEqual(edited.supersedesID, original.id)
         await XCTAssertEqual(await store.memory(id: original.id)?.supersededByID, edited.id)
-        XCTAssertFalse(edited.isUnsupported, "A user edit is support in itself")
+        await XCTAssertFalse(edited.isUnsupported, "A user edit is support in itself")
     }
 
     func testUnresolvedItemsAreTheQuestionsAndOpenIssues() async throws {
@@ -596,8 +596,8 @@ final class MemoryStoreTests: XCTestCase {
         _ = await store.upsertMemory(candidate("a plain fact", kind: .fact, key: "f1"))
 
         let unresolved = await store.unresolvedMemories()
-        XCTAssertEqual(unresolved.count, 2)
-        XCTAssertTrue(unresolved.allSatisfy { MemoryKind.unresolvedKinds.contains($0.kind) })
+        await XCTAssertEqual(unresolved.count, 2)
+        await XCTAssertTrue(unresolved.allSatisfy { MemoryKind.unresolvedKinds.contains($0.kind) })
     }
 
     func testArchivedMemoriesLeaveTheCurrentSet() async throws {
@@ -616,7 +616,7 @@ final class MemoryStoreTests: XCTestCase {
             candidate("cited", key: "c", sources: [lineID])))
 
         let citing = await store.memoriesCiting(sourceID: lineID)
-        XCTAssertEqual(citing.map(\.id), [memory.id])
+        await XCTAssertEqual(citing.map(\.id), [memory.id])
         await XCTAssertTrue(await store.memoriesCiting(sourceID: UUID()).isEmpty)
     }
 
@@ -628,12 +628,12 @@ final class MemoryStoreTests: XCTestCase {
                                         explanation: "these disagree", confidence: 0.7)
 
         var open = await store.contradictions(includeResolved: false)
-        XCTAssertEqual(open.count, 1)
+        await XCTAssertEqual(open.count, 1)
         await XCTAssertEqual(try await XCTUnwrap(await store.memory(id: a.id)).assertion, .contradictory)
 
-        await store.resolveContradiction(id: try XCTUnwrap(open.first).id, keeping: b.id)
+        await store.resolveContradiction(id: try await XCTUnwrap(open.first).id, keeping: b.id)
         open = await store.contradictions(includeResolved: false)
-        XCTAssertTrue(open.isEmpty)
+        await XCTAssertTrue(open.isEmpty)
         await XCTAssertFalse(try await XCTUnwrap(await store.memory(id: a.id)).isCurrent, "The loser is archived")
         await XCTAssertTrue(try await XCTUnwrap(await store.memory(id: b.id)).isCurrent)
     }
@@ -674,9 +674,9 @@ final class SummaryStoreTests: XCTestCase {
                                                periodStart: day, periodEnd: day.addingTimeInterval(86_400),
                                                sourceKind: .conversation, sourceIDs: sources)
 
-        XCTAssertEqual(first.id, second.id)
-        XCTAssertEqual(second.revision, first.revision + 1)
-        XCTAssertEqual(second.text, "The team changed its mind about the database.")
+        await XCTAssertEqual(first.id, second.id)
+        await XCTAssertEqual(second.revision, first.revision + 1)
+        await XCTAssertEqual(second.text, "The team changed its mind about the database.")
         await XCTAssertEqual(await store.summaries(scope: .day).count, 1)
     }
 
@@ -689,7 +689,7 @@ final class SummaryStoreTests: XCTestCase {
         let b = await store.upsertSummary(scope: .week, key: "shared", draft: draft,
                                           periodStart: day, periodEnd: day,
                                           sourceKind: .conversation, sourceIDs: [UUID()])
-        XCTAssertNotEqual(a.id, b.id)
+        await XCTAssertNotEqual(a.id, b.id)
     }
 
     func testASummaryWithoutSourcesIsUnsupported() async throws {
@@ -698,7 +698,7 @@ final class SummaryStoreTests: XCTestCase {
         let summary = await store.upsertSummary(scope: .day, key: "empty", draft: draft,
                                                 periodStart: day, periodEnd: day,
                                                 sourceKind: .conversation, sourceIDs: [])
-        XCTAssertEqual(summary.assertion, .unsupported)
+        await XCTAssertEqual(summary.assertion, .unsupported)
     }
 
     func testSummaryWithSourcesIsLabelledSummarised() async throws {
@@ -707,9 +707,9 @@ final class SummaryStoreTests: XCTestCase {
         let summary = await store.upsertSummary(scope: .day, key: "full", draft: draft,
                                                 periodStart: day, periodEnd: day,
                                                 sourceKind: .conversation, sourceIDs: [UUID()])
-        XCTAssertEqual(summary.assertion, .summarised)
-        XCTAssertEqual(summary.generator, "extractive")
-        XCTAssertEqual(summary.bullets.count, 2)
+        await XCTAssertEqual(summary.assertion, .summarised)
+        await XCTAssertEqual(summary.generator, "extractive")
+        await XCTAssertEqual(summary.bullets.count, 2)
     }
 }
 
@@ -721,13 +721,13 @@ final class GraphStoreTests: XCTestCase {
         let store = try TestStore.make()
         let first = try await XCTUnwrap(await store.upsertNode(kind: .project, name: "Aurora"))
         let second = try await XCTUnwrap(await store.upsertNode(kind: .project, name: "  aurora  "))
-        XCTAssertEqual(first, second, "Case and padding must not create a second node")
+        await XCTAssertEqual(first, second, "Case and padding must not create a second node")
 
         let topic = try await XCTUnwrap(await store.upsertNode(kind: .topic, name: "Aurora"))
-        XCTAssertNotEqual(first, topic, "A project and a topic with the same name are different")
+        await XCTAssertNotEqual(first, topic, "A project and a topic with the same name are different")
 
         let node = try await XCTUnwrap(await store.node(id: first))
-        XCTAssertEqual(node.mentionCount, 2)
+        await XCTAssertEqual(node.mentionCount, 2)
     }
 
     func testOneCharacterNamesAreRejected() async throws {
@@ -748,13 +748,13 @@ final class GraphStoreTests: XCTestCase {
                                confidence: 0.8, evidenceIDs: [UUID()])
 
         let subgraph = try await XCTUnwrap(await store.subgraph(around: alex))
-        XCTAssertEqual(subgraph.focus.id, alex)
-        XCTAssertEqual(subgraph.edges.count, 1, "The same pair and kind is one edge")
-        let edge = try XCTUnwrap(subgraph.edges.first)
-        XCTAssertEqual(edge.weight, 2, accuracy: 0.001)
-        XCTAssertEqual(edge.confidence, 0.8, accuracy: 0.001, "Confidence is the best seen")
-        XCTAssertTrue(edge.isExplainable)
-        XCTAssertTrue(edge.evidenceIDs.contains(evidence))
+        await XCTAssertEqual(subgraph.focus.id, alex)
+        await XCTAssertEqual(subgraph.edges.count, 1, "The same pair and kind is one edge")
+        let edge = try await XCTUnwrap(subgraph.edges.first)
+        await XCTAssertEqual(edge.weight, 2, accuracy: 0.001)
+        await XCTAssertEqual(edge.confidence, 0.8, accuracy: 0.001, "Confidence is the best seen")
+        await XCTAssertTrue(edge.isExplainable)
+        await XCTAssertTrue(edge.evidenceIDs.contains(evidence))
     }
 
     func testSelfEdgesAreIgnored() async throws {
@@ -775,8 +775,8 @@ final class GraphStoreTests: XCTestCase {
         }
 
         let subgraph = try await XCTUnwrap(await store.subgraph(around: focus, maxNeighbours: 5))
-        XCTAssertLessThanOrEqual(subgraph.neighbours.count, 5)
-        XCTAssertTrue(subgraph.hasMore, "The UI must be told it is seeing a slice")
+        await XCTAssertLessThanOrEqual(subgraph.neighbours.count, 5)
+        await XCTAssertTrue(subgraph.hasMore, "The UI must be told it is seeing a slice")
     }
 
     func testSubgraphOfAnUnknownNodeIsNil() async throws {
@@ -793,7 +793,7 @@ final class GraphStoreTests: XCTestCase {
                             sourceIDs: [UUID()], nodeIDs: [node], dedupeKey: "d")))
 
         let found = await store.memories(nodeID: node, limit: 10)
-        XCTAssertEqual(found.map(\.id), [memory.id])
+        await XCTAssertEqual(found.map(\.id), [memory.id])
     }
 }
 
@@ -829,13 +829,13 @@ final class JobQueueTests: XCTestCase {
         await store.enqueueJob(kind: .processUtterance, payload: high, priority: 10)
 
         let first = try await XCTUnwrap(await store.claimNextJob())
-        XCTAssertEqual(first.kind, .processUtterance,
+        await XCTAssertEqual(first.kind, .processUtterance,
                        "Live audio must not wait behind a nightly rollup")
-        XCTAssertEqual(first.payload, high)
-        XCTAssertEqual(first.attempts, 1)
+        await XCTAssertEqual(first.payload, high)
+        await XCTAssertEqual(first.attempts, 1)
 
         let second = try await XCTUnwrap(await store.claimNextJob())
-        XCTAssertEqual(second.payload, low)
+        await XCTAssertEqual(second.payload, low)
         await XCTAssertNil(await store.claimNextJob())
     }
 
@@ -849,7 +849,7 @@ final class JobQueueTests: XCTestCase {
                 accepted += 1
             }
         }
-        XCTAssertEqual(accepted, 1)
+        await XCTAssertEqual(accepted, 1)
         await XCTAssertEqual(await store.pendingJobCount(), 1)
     }
 
@@ -871,14 +871,14 @@ final class JobQueueTests: XCTestCase {
             await store.failJob(id: job.id, error: "synthetic failure")
         }
 
-        XCTAssertEqual(attempts, JobRecord.maxAttempts,
+        await XCTAssertEqual(attempts, JobRecord.maxAttempts,
                        "A job that always fails must stop, not spin forever")
         await XCTAssertEqual(await store.failedJobs().count, 1)
         await XCTAssertEqual(await store.pendingJobCount(), 0)
 
         // The user can ask for a retry explicitly, from Diagnostics.
         let retried = await store.retryFailedJobs()
-        XCTAssertEqual(retried, 1)
+        await XCTAssertEqual(retried, 1)
         await XCTAssertEqual(await store.pendingJobCount(), 1)
     }
 
@@ -890,7 +890,7 @@ final class JobQueueTests: XCTestCase {
         await XCTAssertEqual(await store.pendingJobCount(), 1, "A running job still counts as outstanding")
 
         let reset = await store.resetStrandedJobs()
-        XCTAssertEqual(reset, 1)
+        await XCTAssertEqual(reset, 1)
         await XCTAssertNotNil(await store.claimNextJob(), "It must be claimable again")
     }
 
@@ -911,9 +911,9 @@ final class JobQueueTests: XCTestCase {
         let store = try TestStore.make()
         await store.enqueueJob(kind: .rollupDay, payload: RollupPayload(key: "k").json, priority: 1)
         let pending = await store.pendingJobs(kind: .rollupDay, limit: 10)
-        XCTAssertEqual(pending.count, 1)
+        await XCTAssertEqual(pending.count, 1)
 
-        await store.cancelJob(id: try XCTUnwrap(pending.first).id, reason: "user cancelled")
+        await store.cancelJob(id: try await XCTUnwrap(pending.first).id, reason: "user cancelled")
         await XCTAssertEqual(await store.pendingJobCount(), 0)
     }
 
@@ -928,7 +928,7 @@ final class JobQueueTests: XCTestCase {
         await store.enqueueJob(kind: .processUtterance, payload: utterance(second), priority: 5)
 
         let live = await store.liveUtteranceIDs()
-        XCTAssertEqual(live, [first, second],
+        await XCTAssertEqual(live, [first, second],
                        "Only utterance work holds audio files open")
     }
 
@@ -939,11 +939,11 @@ final class JobQueueTests: XCTestCase {
         await store.enqueueJob(kind: .processUtterance, payload: utterance(id, snr: 17.5), priority: 5)
 
         let job = try await XCTUnwrap(await store.claimNextJob())
-        let decoded = try XCTUnwrap(UtterancePayload(json: job.payload))
-        XCTAssertEqual(decoded.utteranceID, id)
-        XCTAssertEqual(decoded.meanSNRDB, 17.5, accuracy: 0.001)
-        XCTAssertEqual(decoded.duration, 4, accuracy: 0.001)
-        XCTAssertEqual(decoded.filename, "\(id).wav")
+        let decoded = try await XCTUnwrap(UtterancePayload(json: job.payload))
+        await XCTAssertEqual(decoded.utteranceID, id)
+        await XCTAssertEqual(decoded.meanSNRDB, 17.5, accuracy: 0.001)
+        await XCTAssertEqual(decoded.duration, 4, accuracy: 0.001)
+        await XCTAssertEqual(decoded.filename, "\(id).wav")
     }
 }
 
@@ -957,20 +957,20 @@ final class StoreErasureTests: XCTestCase {
         _ = await MessyCorpus.closeAndBuildMemories(in: store)
 
         var stats = await store.stats()
-        XCTAssertGreaterThan(stats.transcriptSegments, 0)
-        XCTAssertGreaterThan(stats.documents, 0)
+        await XCTAssertGreaterThan(stats.transcriptSegments, 0)
+        await XCTAssertGreaterThan(stats.documents, 0)
 
         await store.deleteEverything()
         stats = await store.stats()
-        XCTAssertEqual(stats.sessions, 0)
-        XCTAssertEqual(stats.transcriptSegments, 0)
-        XCTAssertEqual(stats.conversations, 0)
-        XCTAssertEqual(stats.memories, 0)
-        XCTAssertEqual(stats.speakers, 0)
-        XCTAssertEqual(stats.documents, 0)
-        XCTAssertEqual(stats.postings, 0)
-        XCTAssertEqual(stats.nodes, 0)
-        XCTAssertEqual(stats.edges, 0)
+        await XCTAssertEqual(stats.sessions, 0)
+        await XCTAssertEqual(stats.transcriptSegments, 0)
+        await XCTAssertEqual(stats.conversations, 0)
+        await XCTAssertEqual(stats.memories, 0)
+        await XCTAssertEqual(stats.speakers, 0)
+        await XCTAssertEqual(stats.documents, 0)
+        await XCTAssertEqual(stats.postings, 0)
+        await XCTAssertEqual(stats.nodes, 0)
+        await XCTAssertEqual(stats.edges, 0)
 
         // And the store still works afterwards.
         let id = UUID()

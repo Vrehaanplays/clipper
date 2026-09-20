@@ -83,7 +83,7 @@ final class LargeDatasetTests: XCTestCase {
 
         // A rare term: one posting list, one document.
         let rareHits = await search.search(SearchQuery(text: "quokka")).hits
-        XCTAssertEqual(rareHits.map(\.refID), [built.needle])
+        await XCTAssertEqual(rareHits.map(\.refID), [built.needle])
 
         // A common term: a long posting list, capped by `perTokenLimit`.
         for _ in 0..<5 {
@@ -94,7 +94,7 @@ final class LargeDatasetTests: XCTestCase {
         print(String(format: "[perf] search mean %.1f ms, worst %.1f ms over %d samples",
                      report.mean * 1_000, report.worst * 1_000, report.samples))
 
-        XCTAssertLessThan(report.worst, 2.0,
+        await XCTAssertLessThan(report.worst, 2.0,
                           "A search taking seconds means a scan crept into the hot path")
     }
 
@@ -108,8 +108,8 @@ final class LargeDatasetTests: XCTestCase {
         query.limit = 40
         let outcome = await SearchService(store: store).search(query)
 
-        XCTAssertLessThanOrEqual(outcome.hits.count, 40)
-        XCTAssertLessThanOrEqual(outcome.lexicalCandidates, 400,
+        await XCTAssertLessThanOrEqual(outcome.hits.count, 40)
+        await XCTAssertLessThanOrEqual(outcome.lexicalCandidates, 400,
                                  "Candidate gathering must be capped, not exhaustive")
     }
 
@@ -133,7 +133,7 @@ final class LargeDatasetTests: XCTestCase {
         }
 
         let firstPage = await store.transcriptLines(sessionID: sessionID, limit: 50)
-        XCTAssertEqual(firstPage.count, 50)
+        await XCTAssertEqual(firstPage.count, 50)
 
         let early = await time { _ = await store.transcriptLines(from: base, to: base.addingTimeInterval(600)) }
         let late = await time {
@@ -142,7 +142,7 @@ final class LargeDatasetTests: XCTestCase {
         }
         print(String(format: "[perf] window fetch early %.1f ms, late %.1f ms",
                      early * 1_000, late * 1_000))
-        XCTAssertLessThan(late, max(0.5, early * 20),
+        await XCTAssertLessThan(late, max(0.5, early * 20),
                           "A later time window must not cost dramatically more than an earlier one")
     }
 
@@ -153,7 +153,7 @@ final class LargeDatasetTests: XCTestCase {
 
         let elapsed = await time { _ = await store.stats() }
         print(String(format: "[perf] stats %.1f ms", elapsed * 1_000))
-        XCTAssertLessThan(elapsed, 1.0)
+        await XCTAssertLessThan(elapsed, 1.0)
     }
 
     /// Rough storage-growth figure for docs/PERFORMANCE.md, measured rather than guessed.
@@ -167,8 +167,8 @@ final class LargeDatasetTests: XCTestCase {
 
         print(String(format: "[perf] %d documents, %d postings, %.1f postings per line",
                      documents, postings, perLine))
-        XCTAssertGreaterThan(perLine, 1, "Every line should contribute several terms")
-        XCTAssertLessThan(perLine, 40, "A runaway posting count would be a tokeniser bug")
+        await XCTAssertGreaterThan(perLine, 1, "Every line should contribute several terms")
+        await XCTAssertLessThan(perLine, 40, "A runaway posting count would be a tokeniser bug")
     }
 
     /// The memory layer must stay bounded when the same things are said over and over —
@@ -192,12 +192,12 @@ final class LargeDatasetTests: XCTestCase {
         }
 
         let memories = await store.memories(limit: 100)
-        XCTAssertEqual(memories.count, 1, "200 repetitions of one claim is one memory")
+        await XCTAssertEqual(memories.count, 1, "200 repetitions of one claim is one memory")
 
-        let memory = try XCTUnwrap(memories.first)
-        XCTAssertEqual(memory.occurrenceCount, 200)
-        XCTAssertLessThanOrEqual(memory.confidence, 1.0, "Confidence must saturate, not run away")
-        XCTAssertLessThanOrEqual(memory.sourceIDs.count, 64,
+        let memory = try await XCTUnwrap(memories.first)
+        await XCTAssertEqual(memory.occurrenceCount, 200)
+        await XCTAssertLessThanOrEqual(memory.confidence, 1.0, "Confidence must saturate, not run away")
+        await XCTAssertLessThanOrEqual(memory.sourceIDs.count, 64,
                                  "The source list must be capped or a memory grows without bound")
     }
 
@@ -213,7 +213,7 @@ final class LargeDatasetTests: XCTestCase {
 
         let elapsed = await time { _ = await store.claimNextJob() }
         print(String(format: "[perf] claim from 500-job queue %.1f ms", elapsed * 1_000))
-        XCTAssertLessThan(elapsed, 0.5)
+        await XCTAssertLessThan(elapsed, 0.5)
     }
 
     // MARK: - Helpers
