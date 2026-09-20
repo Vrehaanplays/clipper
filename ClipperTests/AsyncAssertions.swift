@@ -24,6 +24,20 @@ func XCTAssertEqual<T: Equatable>(_ expression1: @autoclosure () async throws ->
     }
 }
 
+func XCTAssertEqual<T: FloatingPoint>(_ expression1: @autoclosure () async throws -> T,
+                                      _ expression2: @autoclosure () async throws -> T,
+                                      accuracy: T,
+                                      _ message: @autoclosure () -> String = "",
+                                      file: StaticString = #filePath,
+                                      line: UInt = #line) async rethrows {
+    let lhs = try await expression1()
+    let rhs = try await expression2()
+    if !(abs(lhs - rhs) <= accuracy) {
+        XCTFail(describe(message(), "XCTAssertEqual failed: (\(lhs)) is not equal to (\(rhs)) +/- (\(accuracy))"),
+                file: file, line: line)
+    }
+}
+
 func XCTAssertNotEqual<T: Equatable>(_ expression1: @autoclosure () async throws -> T,
                                      _ expression2: @autoclosure () async throws -> T,
                                      _ message: @autoclosure () -> String = "",

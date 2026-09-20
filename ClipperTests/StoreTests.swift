@@ -605,7 +605,7 @@ final class MemoryStoreTests: XCTestCase {
         let memory = try await XCTUnwrap(await store.upsertMemory(candidate("noise", key: "n")))
         await store.setMemoryArchived(id: memory.id, archived: true)
 
-        await XCTAssertFalse(try await XCTUnwrap(await store.memory(id: memory.id)).isCurrent)
+        try await XCTAssertFalse(try await XCTUnwrap(await store.memory(id: memory.id)).isCurrent)
         await XCTAssertTrue(await store.memories().isEmpty)
     }
 
@@ -629,13 +629,13 @@ final class MemoryStoreTests: XCTestCase {
 
         var open = await store.contradictions(includeResolved: false)
         await XCTAssertEqual(open.count, 1)
-        await XCTAssertEqual(try await XCTUnwrap(await store.memory(id: a.id)).assertion, .contradictory)
+        try await XCTAssertEqual(try await XCTUnwrap(await store.memory(id: a.id)).assertion, .contradictory)
 
         await store.resolveContradiction(id: try await XCTUnwrap(open.first).id, keeping: b.id)
         open = await store.contradictions(includeResolved: false)
         await XCTAssertTrue(open.isEmpty)
-        await XCTAssertFalse(try await XCTUnwrap(await store.memory(id: a.id)).isCurrent, "The loser is archived")
-        await XCTAssertTrue(try await XCTUnwrap(await store.memory(id: b.id)).isCurrent)
+        try await XCTAssertFalse(try await XCTUnwrap(await store.memory(id: a.id)).isCurrent, "The loser is archived")
+        try await XCTAssertTrue(try await XCTUnwrap(await store.memory(id: b.id)).isCurrent)
     }
 
     func testRecordingTheSameContradictionTwiceIsIdempotent() async throws {
@@ -761,7 +761,7 @@ final class GraphStoreTests: XCTestCase {
         let store = try TestStore.make()
         let node = try await XCTUnwrap(await store.upsertNode(kind: .topic, name: "sailing"))
         await store.upsertEdge(source: node, target: node, kind: .relatedTo)
-        await XCTAssertTrue(try await XCTUnwrap(await store.subgraph(around: node)).edges.isEmpty)
+        try await XCTAssertTrue(try await XCTUnwrap(await store.subgraph(around: node)).edges.isEmpty)
     }
 
     /// The brain map must never fetch the whole graph.

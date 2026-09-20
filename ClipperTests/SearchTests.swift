@@ -454,7 +454,7 @@ final class AnswerServiceTests: XCTestCase {
         let chain = try await XCTUnwrap(answer.chains.first)
         await XCTAssertFalse(chain.leaf.text.isEmpty)
         await XCTAssertGreaterThan(chain.leaf.endedAt, chain.leaf.startedAt)
-        await XCTAssertNotNil(chain.memory ?? chain.summary,
+        XCTAssertNotNil(chain.memory ?? chain.summary,
                         "A chain starts at a memory or a summary")
         await XCTAssertNotNil(chain.conversation)
     }
