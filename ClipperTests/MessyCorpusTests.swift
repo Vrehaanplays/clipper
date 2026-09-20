@@ -41,7 +41,7 @@ final class MessyCorpusTests: XCTestCase {
 
     func testEveryTranscriptLineLandsInExactlyOneConversation() async throws {
         let store = try await loaded()
-        let lines = await store.transcriptLines(sessionID: try XCTUnwrap(await store.sessions().first).id)
+        let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
 
         XCTAssertEqual(lines.count, MessyCorpus.lines.count)
         XCTAssertTrue(lines.allSatisfy { $0.conversationID != nil },
@@ -55,7 +55,7 @@ final class MessyCorpusTests: XCTestCase {
 
     func testTheUnknownVoiceStaysUnknownRatherThanBeingGuessedInto() async throws {
         let store = try await loaded()
-        let lines = await store.transcriptLines(sessionID: try XCTUnwrap(await store.sessions().first).id)
+        let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
         let unknown = lines.filter(\.speakerIsUnknown)
 
         XCTAssertEqual(unknown.count, 2, "Both 'Unknown voice' lines stay unattributed")
@@ -68,7 +68,7 @@ final class MessyCorpusTests: XCTestCase {
 
     func testCorrectingASpeakerNameUpdatesEveryLine() async throws {
         let store = try await loaded()
-        let alex = try XCTUnwrap(await store.speakers().first { $0.displayName == "Alex" })
+        let alex = try await XCTUnwrap(await store.speakers().first { $0.displayName == "Alex" })
 
         await store.renameSpeaker(id: alex.id, to: "Alexandra")
         let lines = await store.recentLines(speakerID: alex.id, limit: 50)
@@ -82,7 +82,7 @@ final class MessyCorpusTests: XCTestCase {
     /// They must be stored, labelled and down-ranked — never silently discarded.
     func testLowConfidenceLinesAreKeptAndLabelled() async throws {
         let store = try await loaded()
-        let lines = await store.transcriptLines(sessionID: try XCTUnwrap(await store.sessions().first).id)
+        let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
         let weak = lines.filter(\.isLowConfidence)
 
         XCTAssertGreaterThanOrEqual(weak.count, 3)
@@ -97,7 +97,7 @@ final class MessyCorpusTests: XCTestCase {
     func testCorrectingAMisheardLineFixesTheIndexToo() async throws {
         let store = try await loaded()
         let search = SearchService(store: store)
-        let lines = await store.transcriptLines(sessionID: try XCTUnwrap(await store.sessions().first).id)
+        let lines = await store.transcriptLines(sessionID: try await XCTUnwrap(await store.sessions().first).id)
         let misheard = try XCTUnwrap(lines.first { $0.text.contains("a roarer") })
 
         let corrected = "aurora needs the migration script first"
@@ -159,7 +159,7 @@ final class MessyCorpusTests: XCTestCase {
         }
 
         for old in superseded {
-            let replacement = try XCTUnwrap(await store.memory(id: try XCTUnwrap(old.supersededByID)))
+            let replacement = try await XCTUnwrap(await store.memory(id: try XCTUnwrap(old.supersededByID)))
             XCTAssertGreaterThan(replacement.revision, old.revision)
             XCTAssertEqual(replacement.supersedesID, old.id)
             XCTAssertFalse(old.title.isEmpty, "The old statement is still readable")
@@ -178,7 +178,7 @@ final class MessyCorpusTests: XCTestCase {
         _ = await MessyCorpus.closeAndBuildMemories(in: store)
 
         let lineIDs = Set(await store.transcriptLines(
-            sessionID: try XCTUnwrap(await store.sessions().first).id).map(\.id))
+            sessionID: try await XCTUnwrap(await store.sessions().first).id).map(\.id))
 
         for memory in await store.memories(limit: 200) where memory.sourceKind == .transcriptSegment {
             XCTAssertFalse(memory.sourceIDs.isEmpty,
@@ -213,7 +213,7 @@ final class MessyCorpusTests: XCTestCase {
 
         if let aurora = aurora.first {
             XCTAssertGreaterThan(aurora.mentionCount, 1)
-            let subgraph = try XCTUnwrap(await store.subgraph(around: aurora.id))
+            let subgraph = try await XCTUnwrap(await store.subgraph(around: aurora.id))
             XCTAssertEqual(subgraph.focus.id, aurora.id)
         }
     }
@@ -234,7 +234,7 @@ final class MessyCorpusTests: XCTestCase {
 
     func testFilteringBySpeakerSeparatesTwoVoicesSayingTheSameThing() async throws {
         let store = try await loaded()
-        let sam = try XCTUnwrap(await store.speakers().first { $0.displayName == "Sam" })
+        let sam = try await XCTUnwrap(await store.speakers().first { $0.displayName == "Sam" })
 
         var query = SearchQuery(text: "aurora")
         query.speakerIDs = [sam.id]
@@ -250,7 +250,7 @@ final class MessyCorpusTests: XCTestCase {
     /// the input. This is the property that makes it a safe fallback.
     func testTheExtractiveSummaryOnlyContainsSentencesThatWereActuallySaid() async throws {
         let store = try await loaded()
-        let conversation = try XCTUnwrap(await store.conversations().first)
+        let conversation = try await XCTUnwrap(await store.conversations().first)
         let lines = await store.transcriptLines(conversationID: conversation.id)
         XCTAssertFalse(lines.isEmpty)
 
@@ -261,7 +261,7 @@ final class MessyCorpusTests: XCTestCase {
                                        periodStart: conversation.startedAt,
                                        periodEnd: conversation.endedAt)
 
-        let draft = try XCTUnwrap(await ExtractiveSummarizer().summarize(input))
+        let draft = try await XCTUnwrap(await ExtractiveSummarizer().summarize(input))
         XCTAssertEqual(draft.generator, "extractive")
         XCTAssertFalse(draft.title.isEmpty)
 
@@ -281,7 +281,7 @@ final class MessyCorpusTests: XCTestCase {
                                        periodStart: Date(),
                                        periodEnd: Date())
         XCTAssertFalse(input.isSubstantial)
-        XCTAssertNil(await ExtractiveSummarizer().summarize(input),
+        await XCTAssertNil(await ExtractiveSummarizer().summarize(input),
                      "There is nothing to summarise; inventing something would be worse")
     }
 

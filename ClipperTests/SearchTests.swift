@@ -218,13 +218,13 @@ final class SearchServiceTests: XCTestCase {
         let store = try TestStore.make()
         let refID = UUID()
         _ = await index(store, title: "Line", text: "a roarer needs the migration script", refID: refID)
-        XCTAssertEqual(await service(store).search(SearchQuery(text: "roarer")).hits.count, 1)
+        await XCTAssertEqual(await service(store).search(SearchQuery(text: "roarer")).hits.count, 1)
 
         _ = await index(store, title: "Line", text: "aurora needs the migration script", refID: refID)
-        XCTAssertTrue(await service(store).search(SearchQuery(text: "roarer")).hits.isEmpty,
+        await XCTAssertTrue(await service(store).search(SearchQuery(text: "roarer")).hits.isEmpty,
                       "The corrected text must not still match the mishearing")
-        XCTAssertEqual(await service(store).search(SearchQuery(text: "aurora")).hits.count, 1)
-        XCTAssertEqual(await store.documentCount(), 1, "Re-indexing is an update, not an insert")
+        await XCTAssertEqual(await service(store).search(SearchQuery(text: "aurora")).hits.count, 1)
+        await XCTAssertEqual(await store.documentCount(), 1, "Re-indexing is an update, not an insert")
     }
 
     /// A rare term must beat a common one. This is the IDF half of the ranking.
@@ -316,7 +316,7 @@ final class SearchServiceTests: XCTestCase {
 
         var query = SearchQuery(text: "aurora")
         query.speakerIDs = [alex]
-        XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [alexLine])
+        await XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [alexLine])
     }
 
     func testDateFilterExcludesOutsideTheWindow() async throws {
@@ -329,7 +329,7 @@ final class SearchServiceTests: XCTestCase {
         var query = SearchQuery(text: "aurora")
         query.from = base.addingTimeInterval(-3_600)
         query.to = base.addingTimeInterval(3_600)
-        XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [inside])
+        await XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [inside])
     }
 
     func testNodeFilterNarrowsToATopic() async throws {
@@ -340,7 +340,7 @@ final class SearchServiceTests: XCTestCase {
 
         var query = SearchQuery(text: "deadline")
         query.nodeIDs = [node]
-        XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [tagged])
+        await XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [tagged])
     }
 
     func testConfidenceFloorFiltersOutTheMumbling() async throws {
@@ -350,7 +350,7 @@ final class SearchServiceTests: XCTestCase {
 
         var query = SearchQuery(text: "aurora")
         query.minimumConfidence = 0.5
-        XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [clear])
+        await XCTAssertEqual(await service(store).search(query).hits.map(\.refID), [clear])
     }
 
     func testResultsRespectTheLimit() async throws {
@@ -360,7 +360,7 @@ final class SearchServiceTests: XCTestCase {
         }
         var query = SearchQuery(text: "aurora")
         query.limit = 7
-        XCTAssertEqual(await service(store).search(query).hits.count, 7)
+        await XCTAssertEqual(await service(store).search(query).hits.count, 7)
     }
 
     func testANonMatchingQueryReturnsNothingRatherThanNoise() async throws {
@@ -368,7 +368,7 @@ final class SearchServiceTests: XCTestCase {
         _ = await index(store, title: "Aurora", text: "we chose postgres for aurora")
         var query = SearchQuery(text: "helicopter maintenance")
         query.semanticEnabled = false
-        XCTAssertTrue(await service(store).search(query).hits.isEmpty)
+        await XCTAssertTrue(await service(store).search(query).hits.isEmpty)
     }
 
     // MARK: Snippets

@@ -78,7 +78,7 @@ final class LargeDatasetTests: XCTestCase {
         let built = await synthesize(into: store)
         let search = SearchService(store: store)
 
-        XCTAssertEqual(await store.documentCount(), built.lines)
+        await XCTAssertEqual(await store.documentCount(), built.lines)
         print("[perf] indexed \(built.lines) documents, \(await store.postingCount()) postings")
 
         // A rare term: one posting list, one document.
@@ -159,7 +159,7 @@ final class LargeDatasetTests: XCTestCase {
     /// Rough storage-growth figure for docs/PERFORMANCE.md, measured rather than guessed.
     func testIndexGrowthPerLineIsMeasuredAndReported() async throws {
         let store = try TestStore.make()
-        let built = await synthesize(into: store)
+        _ = await synthesize(into: store)
 
         let documents = await store.documentCount()
         let postings = await store.postingCount()
@@ -209,7 +209,7 @@ final class LargeDatasetTests: XCTestCase {
                                    payload: RollupPayload(key: "day-\(index)").json,
                                    priority: index % 5)
         }
-        XCTAssertEqual(await store.pendingJobCount(), 500)
+        await XCTAssertEqual(await store.pendingJobCount(), 500)
 
         let elapsed = await time { _ = await store.claimNextJob() }
         print(String(format: "[perf] claim from 500-job queue %.1f ms", elapsed * 1_000))
