@@ -22,7 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 
 	<!-- Legitimate background audio recording. This is the capability that keeps the
-	     recorder alive with the app backgrounded and the screen off. -->
+	     recorder alive with the app backgrounded and the screen off. It is an Info.plist
+	     key, not an entitlement. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
@@ -30,7 +31,18 @@
 
 	<!-- Shown in the system microphone permission prompt. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Clipper records audio from the microphone to build a rolling buffer of short clips stored only on this iPhone.</string>
+	<string>Clipper listens through the built-in microphone so it can transcribe nearby speech and build your searchable memory. Everything is processed and stored on this iPhone.</string>
+
+	<!-- Required even for fully on-device recognition. -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Clipper transcribes speech it hears entirely on this iPhone, so your conversations become searchable. No audio or text ever leaves the device.</string>
+
+	<!-- Opts the app in to Live Activities / Dynamic Island. Whether one is started is a
+	     Clipper setting; whether it is displayed is up to iOS and the user. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
@@ -51,6 +63,21 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+
+	<!-- Deep links from Spotlight results, widgets and the Live Activity. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.vrehaanplays.clipper.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>clipper</string>
+			</array>
+		</dict>
 	</array>
 
 	<!-- Recordings are private to the app sandbox. No Files browsing, no document

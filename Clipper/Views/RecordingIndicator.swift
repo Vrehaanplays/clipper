@@ -2,6 +2,9 @@ import SwiftUI
 
 /// The status line: a dot that breathes only while audio is genuinely being captured,
 /// plus the engine's own description of what it is doing.
+///
+/// The dot's animation is driven by `isCapturingAudio`, not by the button having been
+/// tapped, so a paused or interrupted session visibly stops moving.
 struct RecordingIndicator: View {
     let state: RecorderState
 
@@ -14,6 +17,9 @@ struct RecordingIndicator: View {
                 .contentTransition(.opacity)
         }
         .animation(.smooth(duration: 0.35), value: state)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(state.title)
+        .accessibilityValue(state.detail ?? "")
     }
 }
 
@@ -38,7 +44,10 @@ private struct StatusDot: View {
             .onChange(of: isLive, initial: true) { _, live in
                 pulse = false
                 guard live else { return }
-                withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) {
+                // Speech beats faster than idle listening — the state is legible at a
+                // glance without reading the label.
+                let period = state.isSpeechDetected ? 1.1 : 1.9
+                withAnimation(.easeOut(duration: period).repeatForever(autoreverses: false)) {
                     pulse = true
                 }
             }

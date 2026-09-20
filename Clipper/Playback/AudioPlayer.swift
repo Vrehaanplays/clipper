@@ -29,30 +29,49 @@ final class AudioPlayer: NSObject, ObservableObject {
         currentURL == clip.url
     }
 
+    func isPlaying(url: URL) -> Bool {
+        isPlaying && currentURL == url
+    }
+
+    func isLoaded(url: URL) -> Bool {
+        currentURL == url
+    }
+
     // MARK: - Transport
 
     func toggle(_ clip: Clip) {
-        if currentURL == clip.url {
-            isPlaying ? pause() : resume()
-        } else {
-            load(clip)
-            resume()
-        }
+        toggle(url: clip.url, fallbackDuration: clip.duration)
     }
 
-    private func load(_ clip: Clip) {
+    /// Play any audio file the app owns — a rolling clip or a retained evidence clip.
+    /// Evidence audio can have been removed by the retention policy, so a missing file is
+    /// handled as an ordinary outcome rather than an error.
+    func toggle(url: URL, fallbackDuration: TimeInterval = 0) {
+        if currentURL == url {
+            isPlaying ? pause() : resume()
+            return
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            stop()
+            return
+        }
+        load(url: url, fallbackDuration: fallbackDuration)
+        resume()
+    }
+
+    private func load(url: URL, fallbackDuration: TimeInterval) {
         stopTicker()
         player?.stop()
         player = nil
 
         do {
             try session.activateForPlaybackIfNeeded()
-            let newPlayer = try AVAudioPlayer(contentsOf: clip.url)
+            let newPlayer = try AVAudioPlayer(contentsOf: url)
             newPlayer.delegate = self
             newPlayer.prepareToPlay()
             player = newPlayer
-            currentURL = clip.url
-            duration = newPlayer.duration > 0 ? newPlayer.duration : clip.duration
+            currentURL = url
+            duration = newPlayer.duration > 0 ? newPlayer.duration : fallbackDuration
             position = 0
         } catch {
             currentURL = nil

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The only entitlement Clipper declares. It exists so the WidgetKit extension can
+	     read the app's status snapshot. A free Apple ID cannot provision app groups, so a
+	     free-signed sideload drops this and the widget falls back to its static state;
+	     nothing else in the app depends on it. Background audio, the microphone and Live
+	     Activities are all Info.plist keys, not entitlements. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.vrehaanplays.clipper</string>
+	</array>
+</dict>
+</plist>

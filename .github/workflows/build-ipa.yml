@@ -1,6 +1,8 @@
 name: Build unsigned IPA
 
-# Produces an UNSIGNED Clipper.ipa as a downloadable artifact.
+# Builds the three Clipper targets (app, widget extension, unit tests), runs the test
+# suite on a simulator, and produces an UNSIGNED Clipper.ipa as a downloadable artifact.
+#
 # AltStore does the signing on your side with your own Apple ID, so no certificates,
 # no provisioning profiles and no secrets are needed here.
 
@@ -12,7 +14,7 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +32,84 @@ jobs:
         run: brew install xcodegen
 
       - name: Generate Clipper.xcodeproj
-        run: xcodegen generate --spec project.yml
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          xcodebuild -list -project Clipper.xcodeproj
+
+      # The simulator lineup changes with every Xcode release, so pick one at runtime
+      # rather than pinning a name that will rot.
+      - name: Choose a simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json \
+            | python3 -c "
+import json, sys
+data = json.load(sys.stdin)['devices']
+best = None
+for runtime, devices in data.items():
+    if 'iOS' not in runtime:
+        continue
+    version = runtime.rsplit('.', 1)[-1].replace('iOS-', '').replace('-', '.')
+    for device in devices:
+        if not device.get('isAvailable'):
+            continue
+        if 'iPhone' not in device['name']:
+            continue
+        key = (tuple(int(p) for p in version.split('.') if p.isdigit()), device['name'])
+        if best is None or key > best[0]:
+            best = (key, device['udid'], device['name'], version)
+print(best[1] if best else '')
+print(f'{best[2]} (iOS {best[3]})' if best else 'none', file=sys.stderr)
+")
+          if [ -z "$udid" ]; then
+            echo "No iOS simulator available on this runner" >&2
+            xcrun simctl list runtimes >&2
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Run the test suite on a simulator
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          xcodebuild \
+            -project Clipper.xcodeproj \
+            -scheme Clipper \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build-tests \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            test 2>&1 | tee xcodebuild-test.log
+
+      # The perf tests print their measured numbers; surface them in the job summary so
+      # docs/PERFORMANCE.md can quote real figures instead of guesses.
+      - name: Report measured performance
+        if: always()
+        run: |
+          set -euo pipefail
+          {
+            echo '## Measured performance'
+            echo '```'
+            grep -h '\[perf\]' xcodebuild-test.log || echo 'no [perf] lines captured'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clipper-test-results
+          path: |
+            TestResults.xcresult
+            xcodebuild-test.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Build (unsigned, Release, device)
         run: |
@@ -58,22 +137,34 @@ jobs:
           cp -R "$APP" Payload/
           rm -f Clipper.ipa
           zip -qry Clipper.ipa Payload
-          unzip -l Clipper.ipa | head -20
+          unzip -l Clipper.ipa | head -40
           ls -lh Clipper.ipa
 
       - name: Sanity-check the bundle
         run: |
           set -euo pipefail
-          PLIST="Payload/Clipper.app/Info.plist"
+          APP="Payload/Clipper.app"
+          PLIST="$APP/Info.plist"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :NSSpeechRecognitionUsageDescription" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :NSSupportsLiveActivities" "$PLIST"
           /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$PLIST"
+
+          # The widget extension must be embedded, or there is no Home Screen widget and
+          # no Live Activity UI at all.
+          WIDGET="$APP/PlugIns/ClipperWidgets.appex"
+          test -d "$WIDGET" || { echo "Widget extension is missing from the bundle"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$WIDGET/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :NSExtension:NSExtensionPointIdentifier" "$WIDGET/Info.plist"
+          echo "Widget extension embedded OK"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Clipper-unsigned-ipa
+          name: Clipper-v2-unsigned-ipa
           path: Clipper.ipa
           if-no-files-found: error
           retention-days: 30

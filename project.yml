@@ -15,13 +15,16 @@ options:
 
 settings:
   base:
-    # Swift 5 language mode: the recorder uses queue-based concurrency deliberately
-    # (real-time audio callbacks and a serial control queue), not actors.
+    # Swift 5 language mode on purpose. The capture path is queue-based (real-time audio
+    # callbacks, a serial control queue and a serial writer queue); the processing path is
+    # actors and structured concurrency. Swift 6 strict checking would force the audio
+    # callbacks into shapes that add hops on the real-time thread.
     SWIFT_VERSION: "5.0"
     SWIFT_STRICT_CONCURRENCY: minimal
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
     DEAD_CODE_STRIPPING: "YES"
     ENABLE_BITCODE: "NO"
+    CLIPPER_APP_GROUP: group.com.vrehaanplays.clipper
   configs:
     Release:
       SWIFT_OPTIMIZATION_LEVEL: "-O"
@@ -29,6 +32,7 @@ settings:
       VALIDATE_PRODUCT: "YES"
 
 targets:
+  # ---------------------------------------------------------------- app
   Clipper:
     type: application
     platform: iOS
@@ -38,13 +42,17 @@ targets:
         # into the bundle as a resource.
         excludes:
           - "Info.plist"
+      # Types shared verbatim with the widget extension: the Live Activity attributes
+      # (both processes must agree on the layout) and the widget snapshot.
+      - path: Shared
+    dependencies:
+      - target: ClipperWidgets
     settings:
       base:
         PRODUCT_NAME: Clipper
-        # Change this to something personal before sideloading, e.g. com.yourname.clipper.
         PRODUCT_BUNDLE_IDENTIFIER: com.vrehaanplays.clipper
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "1"
+        MARKETING_VERSION: "2.0"
+        CURRENT_PROJECT_VERSION: "2"
         INFOPLIST_FILE: Clipper/Info.plist
         GENERATE_INFOPLIST_FILE: "NO"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -53,9 +61,64 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "18.0"
         SWIFT_EMIT_LOC_STRINGS: "NO"
-        # No entitlements file on purpose. Background audio is an Info.plist key, not an
-        # entitlement, so nothing here needs a paid developer account — which is what
-        # lets AltStore re-sign the app with a free Apple ID.
+        # Declares the app group the widget reads its snapshot from. A free Apple ID
+        # cannot provision app groups, so an unsigned/free-signed build loses this and
+        # the widget degrades to its static state — see docs/WIDGETS.md. Background
+        # audio and the microphone are NOT entitlements, so nothing else here depends
+        # on a paid account.
+        CODE_SIGN_ENTITLEMENTS: Clipper/Clipper.entitlements
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+
+  # ------------------------------------------------- widget + live activity
+  ClipperWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ClipperWidgets
+        excludes:
+          - "Info.plist"
+      - path: Shared
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_NAME: ClipperWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.vrehaanplays.clipper.widgets
+        MARKETING_VERSION: "2.0"
+        CURRENT_PROJECT_VERSION: "2"
+        INFOPLIST_FILE: ClipperWidgets/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        SKIP_INSTALL: "YES"
+        CODE_SIGN_ENTITLEMENTS: ClipperWidgets/ClipperWidgets.entitlements
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+
+  # --------------------------------------------------------------- tests
+  ClipperTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ClipperTests
+      - path: Shared
+    dependencies:
+      - target: Clipper
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vrehaanplays.clipper.tests
+        INFOPLIST_FILE: ClipperTests/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Clipper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Clipper"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: ""
         CODE_SIGNING_REQUIRED: "NO"
@@ -66,7 +129,14 @@ schemes:
     build:
       targets:
         Clipper: all
+        ClipperWidgets: all
+        ClipperTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - ClipperTests
     archive:
       config: Release

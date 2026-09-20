@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// The rolling buffer, newest first. Play, scrub, share, delete — nothing more.
+/// The rolling buffer: raw audio of everything heard, newest first.
+///
+/// This is deliberately separate from the Memory tab, and the footer says so. These clips
+/// are **temporary** — they hold about 30 minutes and delete themselves as new ones land.
+/// The transcripts and memories in the rest of the app are what persist. Conflating the two
+/// is the one misunderstanding this screen exists to prevent.
 struct ClipsView: View {
-    @EnvironmentObject private var store: ClipStore
+    @EnvironmentObject private var library: AudioLibrary
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var player: AudioPlayer
     @Environment(\.dismiss) private var dismiss
@@ -10,40 +15,52 @@ struct ClipsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if store.clips.isEmpty {
+                if library.clips.isEmpty {
                     ContentUnavailableView {
-                        Label("No clips yet", systemImage: "waveform")
+                        Label("Nothing buffered yet", systemImage: "waveform.circle")
                     } description: {
-                        Text("Start recording and clips will appear here, newest first.")
+                        Text("Clips appear here as each \(settings.clipMinutes)-minute segment finishes. They are temporary — the oldest is deleted as each new one lands.")
                     }
                 } else {
                     list
                 }
             }
-            .navigationTitle("Clips")
+            .navigationTitle("Rolling buffer")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
             }
-            .onAppear { store.reload() }
+            .onAppear { library.reload() }
         }
     }
 
     private var list: some View {
         List {
             Section {
-                ForEach(store.clips) { clip in
+                ForEach(library.clips) { clip in
                     ClipRow(clip: clip)
                 }
+            } header: {
+                Text("Temporary audio")
             } footer: {
-                Text("\(store.clips.count) of \(settings.maxClipCount) · \(Clip.clockString(store.bufferedDuration)) · \(store.totalSizeLabel)")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(library.clips.count) of \(settings.maxClipCount) · \(ClipperFormat.clock(library.bufferedDuration)) · \(library.totalSizeLabel)")
+                    Text("This is unprocessed audio of everything the microphone heard, kept for about \(settings.bufferMinutes) minutes. Speech that Clipper recognised is stored separately, with its transcript, under Memory.")
+                }
+            }
+
+            if let error = library.storageError {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .listStyle(.insetGrouped)
-        .animation(.smooth(duration: 0.35), value: store.clips.map(\.url))
+        .animation(.smooth(duration: 0.35), value: library.clips.map(\.url))
     }
-
 }
 
 // MARK: - Row
@@ -51,7 +68,7 @@ struct ClipsView: View {
 private struct ClipRow: View {
     let clip: Clip
 
-    @EnvironmentObject private var store: ClipStore
+    @EnvironmentObject private var library: AudioLibrary
     @EnvironmentObject private var player: AudioPlayer
 
     private var isLoaded: Bool { player.isLoaded(clip) }
@@ -97,7 +114,7 @@ private struct ClipRow: View {
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 player.forgetIfPlaying(clip)
-                store.delete(clip)
+                library.delete(clip)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -114,7 +131,7 @@ private struct ClipRow: View {
             }
             Button(role: .destructive) {
                 player.forgetIfPlaying(clip)
-                store.delete(clip)
+                library.delete(clip)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -137,20 +154,13 @@ private struct ClipRow: View {
             .tint(.accentColor)
 
             HStack {
-                Text(Clip.clockString(player.position))
+                Text(ClipperFormat.clock(player.position))
                 Spacer()
-                Text("-" + Clip.clockString(max(0, player.duration - player.position)))
+                Text("-" + ClipperFormat.clock(max(0, player.duration - player.position)))
             }
             .font(.caption2)
             .monospacedDigit()
             .foregroundStyle(.tertiary)
         }
     }
-}
-
-#Preview {
-    ClipsView()
-        .environmentObject(ClipStore.shared)
-        .environmentObject(AppSettings.shared)
-        .environmentObject(AudioPlayer.shared)
 }
