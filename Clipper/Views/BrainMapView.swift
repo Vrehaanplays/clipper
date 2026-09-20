@@ -193,8 +193,12 @@ struct BrainMapView: View {
         if let summaryID = subgraph?.focus.summaryID {
             summary = await store.summary(id: summaryID)
         } else {
-            summary = await store.summary(scope: .topic, key: focus.uuidString)
-                ?? await store.summary(scope: .project, key: focus.uuidString)
+            // `??` is an autoclosure, so the fallback has to be spelled out to stay awaitable.
+            if let topic = await store.summary(scope: .topic, key: focus.uuidString) {
+                summary = topic
+            } else {
+                summary = await store.summary(scope: .project, key: focus.uuidString)
+            }
         }
     }
 }

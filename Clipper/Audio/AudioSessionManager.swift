@@ -132,7 +132,7 @@ final class AudioSessionManager: NSObject {
                 ?? sources.first
             if let preferred {
                 try? preferred.setPreferredPolarPattern(.omnidirectional)
-                try? session.setPreferredDataSource(preferred)
+                try? builtIn.setPreferredDataSource(preferred)
             }
         }
     }

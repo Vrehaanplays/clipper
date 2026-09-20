@@ -83,6 +83,7 @@ extension SummaryRecord {
                    periodEnd: periodEnd,
                    confidence: confidence,
                    assertion: assertion,
+                   sourceKind: sourceKind,
                    sourceIDs: sourceIDs.asUUIDs,
                    generator: generator)
     }

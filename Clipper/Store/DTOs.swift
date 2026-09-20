@@ -130,6 +130,8 @@ struct SummaryDTO: Identifiable, Hashable, Sendable {
     let periodEnd: Date
     let confidence: Double
     let assertion: AssertionKind
+    /// What `sourceIDs` point at, so an evidence chain knows which table to follow next.
+    let sourceKind: SourceKind
     let sourceIDs: [UUID]
     /// `foundationModels` or `extractive`.
     let generator: String

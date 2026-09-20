@@ -128,11 +128,18 @@ final class LiveActivityController {
                 await stranded.end(nil, dismissalPolicy: .immediate)
                 Log.surfaces.notice("Ended a stranded Live Activity from a previous run")
             }
-            lock.lock()
-            activity = nil
-            activeSessionID = nil
-            lock.unlock()
+            forgetActivity()
         }
+    }
+
+    /// Drop our handle on the activity. Synchronous on purpose: `NSLock` must never be
+    /// taken inside an async context, so the locked region lives in its own non-async method
+    /// that an async caller invokes between awaits.
+    private func forgetActivity() {
+        lock.lock()
+        activity = nil
+        activeSessionID = nil
+        lock.unlock()
     }
 
     /// Reattach to an activity this process started but lost track of (a scene rebuild).

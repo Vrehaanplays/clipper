@@ -181,7 +181,6 @@ final class ClipperDatabase {
     // MARK: - Diagnostics
 
     var storeByteSize: Int64 {
-        let fileManager = FileManager.default
         var total: Int64 = 0
         let base = storeURL.lastPathComponent
         for suffix in ["", "-wal", "-shm"] {
