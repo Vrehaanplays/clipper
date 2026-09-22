@@ -48,6 +48,10 @@ struct MemoryCandidate: Hashable, Sendable {
     var subjectSpeakerID: UUID?
     var dedupeKey: String
     var embedding: [Float]
+    /// How many separate sightings this candidate was built from. A statement made three
+    /// times in one conversation is one memory that was heard three times, and the count
+    /// is what the evidence view and the importance weighting read.
+    var occurrences: Int
     /// When true, a materially different detail for the same key supersedes the old
     /// memory instead of merging into it — which is how a changed decision keeps its
     /// history.
@@ -65,6 +69,7 @@ struct MemoryCandidate: Hashable, Sendable {
          nodeIDs: [UUID] = [],
          subjectSpeakerID: UUID? = nil,
          dedupeKey: String,
+         occurrences: Int = 1,
          embedding: [Float] = [],
          supersedeOnChange: Bool = false) {
         self.kind = kind
@@ -79,6 +84,7 @@ struct MemoryCandidate: Hashable, Sendable {
         self.nodeIDs = nodeIDs
         self.subjectSpeakerID = subjectSpeakerID
         self.dedupeKey = dedupeKey
+        self.occurrences = max(1, occurrences)
         self.embedding = embedding
         self.supersedeOnChange = supersedeOnChange
     }

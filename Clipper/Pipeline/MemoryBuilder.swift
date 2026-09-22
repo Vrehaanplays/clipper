@@ -95,6 +95,7 @@ struct MemoryBuilder {
                 nodeIDs: nodeIDs,
                 subjectSpeakerID: best.speakerID,
                 dedupeKey: key,
+                occurrences: group.count,
                 supersedeOnChange: Self.subjectKeyedKinds.contains(kind)
             ))
         }

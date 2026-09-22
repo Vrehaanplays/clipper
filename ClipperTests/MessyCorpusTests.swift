@@ -291,8 +291,14 @@ final class MessyCorpusTests: XCTestCase {
     func testLoadingTheCorpusIsIdempotentAtTheMemoryLayer() async throws {
         let store = try await loaded()
         let first = await MessyCorpus.closeAndBuildMemories(in: store)
-        let countAfterFirst = await store.memories(limit: 500).count
-        await XCTAssertEqual(countAfterFirst, Set(first.map(\.id)).count)
+
+        // `first` includes revisions that were superseded during the same pass, so the
+        // current set is a subset of what was built, never larger than it.
+        let current = Set(await store.memories(limit: 500).map(\.id))
+        let countAfterFirst = current.count
+        await XCTAssertFalse(current.isEmpty)
+        await XCTAssertTrue(current.isSubset(of: Set(first.map(\.id))),
+                            "Every current memory came from this build")
 
         // Rebuild from the same extractions: every candidate collides with its own key.
         _ = await MessyCorpus.closeAndBuildMemories(in: store)

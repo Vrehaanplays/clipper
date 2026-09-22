@@ -89,6 +89,7 @@ extension ClipperStore {
                                       importance: candidate.importance,
                                       firstSeenAt: candidate.occurredAt,
                                       lastSeenAt: candidate.occurredAt,
+                                      occurrenceCount: candidate.occurrences,
                                       sourceKind: candidate.sourceKind,
                                       sourceIDs: candidate.sourceIDs.asStrings,
                                       nodeIDs: candidate.nodeIDs.asStrings,
@@ -113,7 +114,7 @@ extension ClipperStore {
                                            importance: max(existing.importance, candidate.importance),
                                            firstSeenAt: existing.firstSeenAt,
                                            lastSeenAt: candidate.occurredAt,
-                                           occurrenceCount: 1,
+                                           occurrenceCount: candidate.occurrences,
                                            revision: existing.revision + 1,
                                            supersedesID: existing.id,
                                            sourceKind: candidate.sourceKind,
@@ -141,7 +142,7 @@ extension ClipperStore {
         }
 
         // Reinforce.
-        existing.occurrenceCount += 1
+        existing.occurrenceCount += candidate.occurrences
         existing.lastSeenAt = max(existing.lastSeenAt, candidate.occurredAt)
         existing.firstSeenAt = min(existing.firstSeenAt, candidate.occurredAt)
         existing.updatedAt = Date()
