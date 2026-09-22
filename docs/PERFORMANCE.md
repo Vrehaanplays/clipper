@@ -13,8 +13,10 @@ machine-to-machine variance does not.
 
 ## 1. Measured figures
 
-From the green run (`LargeDatasetTests`, 120 conversations × 12 lines = 1 440 indexed
-documents):
+From a green run (`LargeDatasetTests`, 120 conversations × 12 lines = 1 440 indexed
+documents). Runner-to-runner variance is real — a second green run of the same commit
+reported 39.2 ms mean / 53.4 ms worst for search and 3.0 ms for a queue claim — so read
+these as an order of magnitude, not a benchmark:
 
 ```
 [perf] indexed 1440 documents, 18603 postings
