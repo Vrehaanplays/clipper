@@ -138,8 +138,14 @@ final class MessyCorpusTests: XCTestCase {
         await XCTAssertEqual(Set(titles).count, titles.count,
                        "Duplicate memories mean the dedupe key is not doing its job")
 
-        let reinforced = memories.filter { $0.occurrenceCount > 1 }
-        await XCTAssertFalse(reinforced.isEmpty, "Repetition must strengthen rather than duplicate")
+        // The repeated statement is the Postgres decision, which the corpus later
+        // reverses — so the reinforced memory is a superseded revision by the end of the
+        // pass, and looking only at current memories would miss it.
+        let everyRevision = await store.memories(includeArchived: true,
+                                                 includeSuperseded: true, limit: 200)
+        let reinforced = everyRevision.filter { $0.occurrenceCount > 1 || $0.sourceIDs.count > 1 }
+        await XCTAssertFalse(reinforced.isEmpty,
+                            "Repetition must strengthen one memory rather than making several")
     }
 
     /// The headline behaviour: the decision reverses 65 minutes later. The old decision must
