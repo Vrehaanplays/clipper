@@ -84,32 +84,41 @@ struct SpeakerManagerView: View {
     }
 }
 
-/// Its own view rather than an inline branch: `body` was long enough that the type
-/// checker resolved the `ForEach` to the wrong overload, and a named view with explicit
-/// parameter types is both cheaper to compile and easier to read.
+/// Its own view rather than an inline branch, with the row split out again: the section
+/// used to live inside `SpeakerManagerView.body`, which had grown big enough that the
+/// type checker gave up on `ForEach` and reported a misleading overload mismatch. Each
+/// piece here is small enough to check on its own.
 private struct AwaitingNamesSection: View {
     let speakers: [SpeakerDTO]
     let onTap: (SpeakerDTO) -> Void
 
+    @ViewBuilder
     var body: some View {
-        if speakers.isEmpty {
-            EmptyView()
-        } else {
+        if !speakers.isEmpty {
             Section("Waiting to be named") {
-                ForEach(speakers, id: \.id) { speaker in
-                    Button {
-                        onTap(speaker)
-                    } label: {
-                        HStack {
-                            SpeakerRow(speaker: speaker)
-                            Image(systemName: "questionmark.circle")
-                                .foregroundStyle(.accentColor)
-                        }
-                    }
-                    .buttonStyle(.plain)
+                ForEach(speakers) { (speaker: SpeakerDTO) in
+                    AwaitingNameRow(speaker: speaker, onTap: onTap)
                 }
             }
         }
+    }
+}
+
+private struct AwaitingNameRow: View {
+    let speaker: SpeakerDTO
+    let onTap: (SpeakerDTO) -> Void
+
+    var body: some View {
+        Button {
+            onTap(speaker)
+        } label: {
+            HStack {
+                SpeakerRow(speaker: speaker)
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.accentColor)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
