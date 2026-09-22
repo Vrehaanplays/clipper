@@ -115,7 +115,7 @@ private struct AwaitingNameRow: View {
             HStack {
                 SpeakerRow(speaker: speaker)
                 Image(systemName: "questionmark.circle")
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
         }
         .buttonStyle(.plain)
