@@ -32,6 +32,7 @@ public struct AppGroupStore {
 
     // MARK: - Writing (app only)
 
+
     /// Atomic: encode, write to a sibling temp file, then replace. A widget reload that
     /// lands mid-write therefore reads the previous complete snapshot, never a torn one.
     @discardableResult
@@ -39,10 +40,7 @@ public struct AppGroupStore {
         guard let url = snapshotURL else { return false }
         do {
             let encoder = JSONEncoder()
-            // Fractional seconds, so a snapshot survives the round trip unchanged. Plain
-            // ISO 8601 truncates to the second, and the staleness check compares the
-            // decoded timestamp against the one the app wrote.
-            encoder.dateEncodingStrategy = .iso8601WithFractionalSeconds
+            encoder.dateEncodingStrategy = SnapshotDateCoding.encoding
             let data = try encoder.encode(snapshot)
             let temp = url.deletingLastPathComponent()
                 .appendingPathComponent(".snapshot-\(UUID().uuidString).tmp")
@@ -64,7 +62,39 @@ public struct AppGroupStore {
         guard let url = snapshotURL,
               let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601WithFractionalSeconds
+        decoder.dateDecodingStrategy = SnapshotDateCoding.decoding
         return try? decoder.decode(ClipperSnapshot.self, from: data)
+    }
+}
+
+/// ISO 8601 *with* fractional seconds.
+///
+/// Spelled out because `JSONEncoder.DateEncodingStrategy.iso8601` truncates to whole
+/// seconds, and the widget decides whether a snapshot is stale by comparing the timestamp
+/// it read against the one the app wrote — a comparison that has to be exact.
+public enum SnapshotDateCoding {
+    static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    public static var encoding: JSONEncoder.DateEncodingStrategy {
+        .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(formatter.string(from: date))
+        }
+    }
+
+    public static var decoding: JSONDecoder.DateDecodingStrategy {
+        .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            guard let date = formatter.date(from: text) else {
+                throw DecodingError.dataCorrupted(
+                    .init(codingPath: decoder.codingPath,
+                          debugDescription: "Not an ISO 8601 date: \(text)"))
+            }
+            return date
+        }
     }
 }

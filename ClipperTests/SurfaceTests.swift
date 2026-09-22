@@ -115,9 +115,9 @@ final class SnapshotTests: XCTestCase {
 
     private func encoded(_ snapshot: ClipperSnapshot) throws -> ClipperSnapshot {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601WithFractionalSeconds
+        encoder.dateEncodingStrategy = SnapshotDateCoding.encoding
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601WithFractionalSeconds
+        decoder.dateDecodingStrategy = SnapshotDateCoding.decoding
         return try decoder.decode(ClipperSnapshot.self, from: try encoder.encode(snapshot))
     }
 
