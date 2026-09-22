@@ -208,7 +208,7 @@ final class SearchServiceTests: XCTestCase {
         let outcome = await service(store).search(SearchQuery(text: "postgres"))
         await XCTAssertEqual(outcome.hits.count, 1)
         await XCTAssertEqual(outcome.hits.first?.refID, refID)
-        let term = try XCTUnwrap(Tokenizer.tokens(in: "postgres").first)
+        let term = try await XCTUnwrap(Tokenizer.tokens(in: "postgres").first)
         await XCTAssertTrue(outcome.hits.first?.matchedTokens.contains(term) ?? false,
                             "Matched tokens are index terms, so they are stemmed")
         await XCTAssertGreaterThan(outcome.lexicalCandidates, 0)
