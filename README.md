@@ -1,132 +1,118 @@
-# Clipper
+# Clipper v2
 
-A tiny native iOS background microphone recorder.
+A personal, iPhone-only memory system. Start Clipper, switch to Spotify or a game, and it
+keeps listening through the iPhone's built-in microphone — detecting speech, transcribing
+it on device, working out who said what, grouping it into conversations, summarising them,
+and making all of it searchable with a chain back to the audio.
 
-Tap **Start** → Clipper records continuously, writing a new 5-minute M4A clip every five
-minutes and keeping only the newest six. That is a rolling 30 minutes of audio, forever,
-in about 7 MB.
-
-Nothing else. No accounts, no cloud, no transcription, no analytics.
+Single user. No account, no sync, no analytics, no cloud processing, and no network client
+of any kind. Everything is Apple-native and stays on the phone.
 
 ---
 
-## How it behaves
+## What it does
 
-- **Start** asks for microphone permission, activates an `AVAudioSession`, and begins one
-  continuous capture.
-- Every 5 minutes the current clip is finalized and the next one begins **in the same
-  audio stream** — no gap, no dropped samples.
-- Once a seventh clip completes, the oldest is deleted. There are never more than six.
-- Recording continues with the app backgrounded, another app open, and the screen off,
-  using iOS's `audio` background mode. The orange microphone indicator stays visible — as
-  it should.
-- Files live in `Application Support/Clips/` inside the app sandbox. They are never
-  uploaded, and never exposed to the Files app unless you share one yourself.
+- **Listens while you use other apps.** `.playAndRecord` with `.mixWithOthers` and the
+  `audio` background mode, pinned to the built-in mic. No AirPods, no Bluetooth.
+- **Finds speech in the noise.** A rolling 5-minute buffer, a four-feature VAD over a
+  learned noise floor, conservative spectral subtraction, and `SoundAnalysis` to down-rank
+  music. Silence costs almost nothing.
+- **Transcribes on device.** `SFSpeechRecognizer` with `requiresOnDeviceRecognition`. Audio
+  never leaves the phone.
+- **Tells voices apart, carefully.** Clustering on timbre, with naming, renaming and
+  merging as your repair — and "Unknown voice" when it does not know.
+- **Builds memories.** Decisions, tasks, facts, preferences, questions, events and more,
+  deduplicated, reinforced when repeated, and **superseded — never overwritten** when you
+  change your mind. A reversal records a contradiction you can resolve.
+- **Answers questions with evidence.** Answer → memory → conversation → transcript line →
+  timestamp → audio, labelled *directly stated*, *summarised*, *inferred*, *uncertain*,
+  *contradictory* or *unsupported*. When there is nothing to go on, it says so.
+- **Surfaces itself natively.** Home Screen widget, Dynamic Island Live Activity, Core
+  Spotlight, App Intents and Shortcuts.
 
-## Architecture
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [CLIPPER_IMPLEMENTATION_PLAN.md](CLIPPER_IMPLEMENTATION_PLAN.md) | The architecture and the phased plan this was built from |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Targets, the pipeline, the four memory layers, every model field |
+| [docs/AUDIO.md](docs/AUDIO.md) | Audio session, background behaviour, interruptions, the rolling buffer, speech detection |
+| [docs/SEARCH.md](docs/SEARCH.md) | The inverted index, ranking, question parsing, evidence chains, Spotlight, App Intents |
+| [docs/WIDGETS.md](docs/WIDGETS.md) | The widget, the Live Activity, and the app-group reality |
+| [docs/TESTING.md](docs/TESTING.md) | 191 tests, what they cover, and the defects they found |
+| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | Measured latencies, storage growth, signposts |
+| [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | What iOS does not allow, and what depends on device, SDK or permission |
+| [BUILD-WINDOWS.md](BUILD-WINDOWS.md) | Building the IPA from Windows with no Mac, and sideloading with AltStore |
+
+## Layout
 
 ```
-Clipper/
-├── ClipperApp.swift            @main; owns the singletons, runs crash recovery at launch
-├── Models/
-│   ├── Clip.swift              a finalized recording: URL, start date, duration, size
-│   ├── RecorderState.swift     idle · starting · recording · finalizing · interrupted ·
-│   │                           stopping · error — what the UI renders, verbatim
-│   └── AppSettings.swift       three knobs + a thread-safe RecordingConfig snapshot
-├── Audio/
-│   ├── AudioSessionManager.swift  sole owner of AVAudioSession; interruptions, routes
-│   ├── SegmentWriter.swift        one segment: AAC/M4A, .part → .m4a, frame-exact
-│   └── AudioRecorder.swift        the engine: capture, rotation, recovery, real state
-├── Storage/
-│   └── ClipStore.swift         the Clips directory, metadata, crash recovery, rolling delete
-├── Playback/
-│   └── AudioPlayer.swift       play / pause / scrub, one clip at a time
-└── Views/
-    ├── ContentView.swift       main screen
-    ├── ClipsView.swift         the buffer: play, scrub, share, delete
-    ├── SettingsView.swift      clip length, buffer, quality
-    ├── RecordingIndicator.swift
-    └── GlassStyle.swift        native glass on iOS 26, system materials below it
+Clipper/                    the app
+├── ClipperApp.swift        @main; owns the singletons, runs recovery at launch
+├── Models/                 Clip, RecorderState, AppSettings, ClipperConfig
+├── Audio/                  session, engine, rolling buffer, VAD, enhancement,
+│                           segmentation, downmix, sound classification
+├── Pipeline/               the job queue and everything it runs: transcription,
+│                           speakers, conversations, extraction, memories, summaries
+├── Store/                  SwiftData models, the @ModelActor store, DTOs, migration
+├── Search/                 tokeniser, index, ranking, question parsing, answers, Spotlight
+├── Surfaces/               Live Activity, widget snapshot, Spotlight plumbing
+├── Intents/                App Intents and Shortcuts
+├── Storage/, Playback/     audio library and clip playback
+├── Views/                  18 SwiftUI screens
+└── Support/                logging and signposts
+
+Shared/                     value types used by the app AND the widget extension
+ClipperWidgets/             the WidgetKit extension (widget + Live Activity UI)
+ClipperTests/               191 tests, including a deliberately messy synthetic corpus
+project.yml                 XcodeGen project definition (three targets)
 ```
-
-### The one design decision that matters
-
-**There is no start/stop timer.** A foreground timer that stops one recorder and starts
-another is the standard way to build this, and it is fragile: the timer fires late under
-load, the restart can fail silently, and every boundary is a chance to lose audio.
-
-Clipper instead runs a **single continuous `AVAudioEngine` input tap** for the whole
-session. Segmentation happens *inside the audio stream*: `SegmentWriter` counts frames,
-and the moment a buffer crosses the 5-minute mark the buffer is **split** — the head
-closes one file, and the tail is handed straight to the next writer in the same turn of
-the queue. Consequences:
-
-- Segments are exact to the sample, not to whatever the run loop felt like doing.
-- There is no silent window between clips, and no frame is ever dropped at a boundary.
-- Wall-clock time is never the clock. The audio frames are the clock.
-- Nothing to fire late, because nothing fires.
-
-A 15-second watchdog exists, but it is *only* a recovery net — for the cases where iOS
-never delivers an interruption-ended notification, or the engine dies quietly after a
-route change. It plays no part in segmentation and does nothing when things are healthy.
-
-### Threading
-
-| Queue | Owns |
-|---|---|
-| `control` (serial) | session activation, engine start/stop, recovery. All engine mutation. |
-| `writer` (serial) | all file I/O and `SegmentWriter` access |
-| main | every `@Published` mutation, and nothing else |
-
-Tap callbacks copy their buffer and hop to `writer` immediately, so no file I/O ever runs
-on the audio thread. Nothing ever blocks `control` from `writer`, so the `writer.sync`
-calls in teardown and interruption handling cannot deadlock.
-
-### Why the UI cannot lie
-
-`RecorderState` is published by the engine, never by the button. Tapping Start shows
-`Starting`; the state only becomes `Recording` when a real audio buffer has been written
-to a real file. If the engine is stopped, the UI says so. The countdown is derived from
-the engine's actual `segmentStart + segmentLength`; `TimelineView` only decides when to
-re-render it, and never supplies the value.
-
-### Crash and restart recovery
-
-A clip is only ever a `.m4a`. While being written, a segment lives at
-`<timestamp>.m4a.part` — an MPEG-4 file with no index, unplayable by construction, so an
-unfinished recording can never be mistaken for a clip. Finalizing releases the
-`AVAudioFile` (which flushes the encoder and writes the index) and only then moves the
-file to its final name.
-
-At launch `ClipStore.bootstrap()` deletes `.part` debris, rebuilds the clip list from disk
-rather than trusting the previous session, drops any individually dead file (zero bytes or
-undecodable), and enforces the six-clip limit. Validity is judged per file, so cleaning up
-a broken old recording can never cost a newer valid one. Start dates come from filesystem
-metadata, with the filename only as a fallback.
-
-### Interruptions
-
-| Event | Behaviour |
-|---|---|
-| Phone call, Siri, another app takes the mic | current clip is finalized so the audio already captured survives as a real, playable file; state → `interrupted` |
-| Interruption ends | session re-activated, engine restarted, new segment opened; state → `starting` → `recording` |
-| Headphones / Bluetooth / USB mic in or out | `AVAudioEngineConfigurationChange` closes the clip and restarts the engine at the new format |
-| Input format changes mid-stream | detected on the next buffer; a fresh container is opened rather than corrupting the current one |
-| Media services reset | the `AVAudioEngine` itself is rebuilt |
-| Disk full / write failure | clip discarded, capture torn down, honest error shown |
-| Segment boundary lands on an interruption | both paths are serialized through the same two queues; worst case is one short clip, never corruption or a double-finalize |
-
-## Privacy
-
-The user starts recording deliberately, and iOS shows the microphone indicator the whole
-time. Clipper makes no network requests of any kind — there is no networking code in the
-project. Recordings stay in the app sandbox; the only way audio leaves is a share sheet
-the user drives. `UIFileSharingEnabled` is `false`.
 
 ## Building
 
-There is no `.xcodeproj` in the repo on purpose — `project.yml` is the project, and a
-hand-edited `.pbxproj` is the one file that cannot be maintained safely without Xcode.
-CI generates the project with XcodeGen on every build.
+On Windows, with no Mac: push to any branch. The workflow in
+`.github/workflows/build-ipa.yml` runs the whole suite on a macOS runner, builds an
+unsigned Release IPA for `iphoneos`, checks the bundle, and uploads it as
+**`Clipper-v2-unsigned-ipa`**. AltStore signs it locally with your own Apple ID.
+[BUILD-WINDOWS.md](BUILD-WINDOWS.md) has the details.
 
-See **[BUILD-WINDOWS.md](BUILD-WINDOWS.md)** for the full Windows → IPA → AltStore route.
+On a Mac:
+
+```bash
+brew install xcodegen
+xcodegen generate --spec project.yml
+open Clipper.xcodeproj
+```
+
+## The design decisions worth knowing
+
+**One continuous audio tap, no timers.** Segmentation happens *inside* the stream:
+`SegmentWriter` counts frames and splits the boundary buffer sample-exactly, so rotation is
+gapless. A timer-driven stop/start recorder is the usual approach and it loses audio at
+every boundary.
+
+**Work is persisted before it is attempted.** Every pipeline step is a `JobRecord` with a
+payload, a priority and an attempt count. Nothing is lost when iOS suspends or kills the
+app, and jobs left running by a dead process are requeued at launch.
+
+**Search is arithmetic, not a model.** An inverted index with BM25-style IDF, a bounded
+candidate set, and a semantic rerank that only ever sees those candidates. No language
+model runs over the database to answer a question — that is what keeps search instant after
+years of data.
+
+**History is append-only.** A changed decision inserts a new revision and marks the old one
+superseded, with a contradiction recorded. `revisionChain(for:)` reads forwards. Nothing is
+overwritten and nothing silently wins.
+
+**Uncertainty is stored, not smoothed away.** Confidence, audio quality, SNR, speaker
+confidence and an assertion label live on every row, and the UI shows them. A low-confidence
+line is kept and marked; an unknown voice stays unknown; an answer with no evidence says so.
+
+## Privacy
+
+- The microphone is used only while you have started a session.
+- Apple's orange microphone indicator is always shown. Clipper makes no attempt to hide it.
+- Nothing is uploaded, because there is no upload path: no network client, no account, no
+  analytics, no crash reporting.
+- Audio, transcripts, memories and the index all live in the app's own container.
+- Recording is something you start. There is no stealth mode.

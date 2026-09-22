@@ -156,3 +156,46 @@ No `ModelContext` is ever shared across actors; no `@Model` instance ever crosse
   speaker bleed, but it ducks or interrupts other apps' audio, which breaks the primary use
   case. It is a setting, default off, with the trade-off stated in the UI.
 - **Cloud anything.** No accounts, no uploads, no analytics, no network code at all.
+
+---
+
+## 8. Outcome
+
+All ten phases are done. The final state, measured rather than asserted:
+
+| | |
+|---|---|
+| Swift | ~22 000 lines across three targets |
+| Tests | 191, all passing |
+| Compiler warnings | 0 |
+| SwiftData models | 15 across four memory layers |
+| SwiftUI screens | 18 |
+| Search latency over 1 440 documents | 33.9 ms mean, 43.5 ms worst |
+| Runtime dependencies | none |
+| IPA | ~2.0 MB unsigned, widget extension embedded |
+
+CI runs the suite on a simulator and then builds the unsigned Release IPA on every push;
+the artifact only ever comes from a green run.
+
+### Defects the test suite found in the implementation
+
+Writing the tests was not a formality — twelve real defects came out of it, including three
+that made headline features silently inert: keyword extraction returned nothing wherever
+`NLTagger` lacked a model (so there were no graph nodes and no subject keys at all), subject
+keys never matched across conversations (so supersession never fired), and search answered
+questions about subjects that had never been discussed. All are listed with their causes in
+`docs/TESTING.md` §4.
+
+### Documentation
+
+`docs/ARCHITECTURE.md`, `docs/AUDIO.md`, `docs/SEARCH.md`, `docs/WIDGETS.md`,
+`docs/TESTING.md`, `docs/PERFORMANCE.md`, `docs/LIMITATIONS.md`, plus `README.md` and
+`BUILD-WINDOWS.md`.
+
+### What remains device-dependent
+
+Nothing here has run on an iPhone. The audio-session paths that a simulator cannot
+verify — Spotify coexistence, a game in the foreground, screen lock, call interruption,
+Dynamic Island presentation, on-device recogniser availability, Foundation Models
+availability, battery and thermals — are listed as a checklist in
+`docs/LIMITATIONS.md` §8.

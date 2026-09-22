@@ -35,27 +35,49 @@ Everything is already in this repo:
 
 | File | Purpose |
 |---|---|
-| `project.yml` | the project definition (XcodeGen). CI turns this into `Clipper.xcodeproj`. |
-| `Clipper/Info.plist` | bundle metadata, background mode, microphone permission string |
-| `Clipper/*.swift` | the app |
+| `project.yml` | the project definition (XcodeGen), three targets. CI turns this into `Clipper.xcodeproj`. |
+| `Clipper/Info.plist` | bundle metadata, background mode, microphone and speech permission strings, `NSSupportsLiveActivities` |
+| `Clipper/`, `Shared/` | the app |
+| `ClipperWidgets/` | the WidgetKit extension (Home Screen widget + Live Activity UI) |
+| `ClipperTests/` | the test suite, which CI runs before it builds the IPA |
 | `Clipper/Assets.xcassets` | app icon (1024×1024) and accent colour |
-| `.github/workflows/build-ipa.yml` | the macOS build job |
+| `.github/workflows/build-ipa.yml` | the macOS test-and-build job |
+| `.github/scripts/pick-simulator.py` | picks whichever iPhone simulator the runner has |
 
-There is deliberately **no `.xcodeproj`** and **no `.entitlements`** file. See §2 and §5.
+There is deliberately **no `.xcodeproj`** — XcodeGen generates it. See §2 about
+entitlements.
 
 ## 2. Required entitlements
 
-**None.** This is worth stating clearly because it is the thing that makes the whole plan
-work:
+**Nothing the app needs to work is an entitlement**, which is what makes this whole plan
+viable:
 
-- Background audio recording is **not** an entitlement. It is the `UIBackgroundModes` →
-  `audio` key in `Info.plist`. No provisioning profile capability, no Apple approval.
-- Microphone access is a **privacy prompt**, driven by `NSMicrophoneUsageDescription`.
-  Also not an entitlement.
+- Background audio recording is the `UIBackgroundModes` → `audio` key in `Info.plist`. Not
+  an entitlement, no provisioning capability, no Apple approval.
+- Microphone and speech-recognition access are **privacy prompts**, driven by
+  `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`.
+- Live Activities and the Dynamic Island need `NSSupportsLiveActivities`, also an
+  Info.plist key. ActivityKit passes its content through the system, so it needs no shared
+  container.
 
-So Clipper needs no paid developer account, and nothing in it blocks free-Apple-ID
-signing. Adding an entitlements file (app groups, iCloud, push, keychain sharing) is
-exactly what *would* break AltStore signing with a free account — so the project has none.
+One entitlement **is** declared, and only one: an app group
+(`group.com.vrehaanplays.clipper`) in `Clipper/Clipper.entitlements` and
+`ClipperWidgets/ClipperWidgets.entitlements`. It exists so the Home Screen widget can read
+the app's status snapshot, which is the only supported way for an extension to see the
+app's data.
+
+**A free Apple ID cannot provision an app group.** Two things follow, and neither breaks
+the build:
+
+1. CI builds with `CODE_SIGN_ENTITLEMENTS=""`, so the IPA it produces carries no embedded
+   entitlements at all. AltStore signs it afterwards and decides what it can grant.
+2. The app detects the outcome at runtime rather than assuming it. If the container is not
+   available, the widget renders an explicit "can't share data with this widget" state and
+   Diagnostics says so. Everything else — recording, transcription, memories, search,
+   Spotlight, App Intents and the Dynamic Island — is unaffected.
+
+With a paid account, add the app group capability to both targets and the widget starts
+working with no code change. See `docs/WIDGETS.md`.
 
 ## 3. Info.plist configuration
 
@@ -66,8 +88,15 @@ The keys that matter, all already set in `Clipper/Info.plist`:
 <array><string>audio</string></array>
 
 <key>NSMicrophoneUsageDescription</key>
-<string>Clipper records audio from the microphone to build a rolling buffer of
-short clips stored only on this iPhone.</string>
+<string>Clipper listens through the built-in microphone so it can transcribe nearby
+speech and build your searchable memory. Everything is processed and stored on this
+iPhone.</string>
+
+<key>NSSpeechRecognitionUsageDescription</key>
+<string>Clipper transcribes speech it hears entirely on this iPhone, so your
+conversations become searchable. No audio or text ever leaves the device.</string>
+
+<key>NSSupportsLiveActivities</key>      <true/>
 
 <key>UIRequiredDeviceCapabilities</key>
 <array><string>arm64</string><string>microphone</string></array>
@@ -83,7 +112,9 @@ seconds of backgrounding.
 
 ## 4. Bundle identifier
 
-Currently `com.clipper.recorder`, set in `project.yml`.
+Currently `com.vrehaanplays.clipper`, set in `project.yml`. The widget extension must stay
+a child of it (`com.vrehaanplays.clipper.widgets`) — iOS requires an extension's
+identifier to be prefixed by its host app's, so if you change one, change both.
 
 **Change it before you sideload.** Pick something personal — `com.yourname.clipper`. Two
 reasons:
@@ -138,9 +169,28 @@ want an interactive Xcode for debugging.
 **Not options:** any "compile iOS on Windows" toolchain, WSL, or Swift-for-Windows. WSL
 gets you the Swift compiler, not the iOS SDK.
 
-## 7. IPA creation
+## 7. What CI actually runs
 
-An `.ipa` is just a zip containing `Payload/YourApp.app/`. That is all. The workflow does:
+The workflow does five things, in order, and stops at the first failure:
+
+1. **Generate the project** — `xcodegen generate --spec project.yml`.
+2. **Pick a simulator** — `.github/scripts/pick-simulator.py` asks `simctl` for the newest
+   available iPhone runtime, rather than pinning a device name that rots with every Xcode
+   release.
+3. **Run the whole test suite** on it. A failing test fails the build, so the IPA artifact
+   only ever comes from a green run. The `.xcresult` bundle and the full log are uploaded
+   as `Clipper-test-results`, and the measured `[perf]` numbers are written into the run's
+   job summary.
+4. **Build unsigned Release for `iphoneos`** — all three targets, with the widget extension
+   embedded.
+5. **Package and sanity-check the IPA** — the bundle identifier, version, background modes,
+   both permission strings, `NSSupportsLiveActivities`, the minimum OS version, and that
+   `Payload/Clipper.app/PlugIns/ClipperWidgets.appex` exists with the right extension point.
+   A missing widget extension fails the build rather than shipping an app with a dead
+   widget.
+
+An `.ipa` is just a zip containing `Payload/YourApp.app/`. That is all. The build and
+packaging steps are:
 
 ```bash
 xcodebuild -project Clipper.xcodeproj -scheme Clipper \
@@ -153,7 +203,9 @@ zip -qry Clipper.ipa Payload
 ```
 
 Note it uses `build`, not `archive` + `exportArchive` — export insists on a signing
-identity, and we deliberately have none.
+identity, and we deliberately have none. `CODE_SIGN_ENTITLEMENTS=""` is passed on the
+command line too, so the app group declared in the entitlements files is not embedded;
+AltStore decides what it can grant when it signs (§2).
 
 ### Running it from Windows
 
@@ -161,7 +213,7 @@ identity, and we deliberately have none.
 cd "D:\ssh or api\Clipper"
 git init
 git add .
-git commit -m "Clipper: rolling-buffer background audio recorder"
+git commit -m "Clipper v2: on-device memory system"
 gh repo create clipper --private --source=. --push
 ```
 
@@ -171,7 +223,7 @@ The build starts on push. Then:
 
 ```bash
 gh run watch
-gh run download --name Clipper-unsigned-ipa
+gh run download --name Clipper-v2-unsigned-ipa
 ```
 
 You now have `Clipper.ipa` on your laptop. Without the `gh` CLI, download it from the
@@ -205,9 +257,13 @@ Then:
    Drive, the Files app over a USB connection, or just email it to yourself and save it to
    Files.
 2. Open **AltStore** on the iPhone → **My Apps** → **+** (top left) → pick `Clipper.ipa`.
-3. AltStore signs it with your Apple ID and installs it. First launch will ask for
-   microphone permission — allow it.
+3. AltStore signs it with your Apple ID and installs it. First launch asks for
+   **microphone** permission and then **speech recognition** — allow both. Speech
+   recognition runs entirely on the phone; the permission is still required.
 4. Tap **Start**, lock the phone, and check that the orange mic dot stays lit.
+5. Then work through the device checklist in `docs/LIMITATIONS.md` §8 — Spotify playing,
+   a game in the foreground, screen locked, and an incoming call. Those are the paths a
+   simulator cannot verify.
 
 ### A realistic warning about iOS 26
 
@@ -239,6 +295,13 @@ the packaging step.
 **AltStore: "Could not find AltServer"** — the iPhone and laptop are on different Wi-Fi
 networks, AltServer isn't running, or Wi-Fi sync was never enabled in iTunes. Plug the
 cable in and retry.
+
+**The widget shows "can't share data with this widget"** — expected on a free Apple ID,
+which cannot provision an app group. Nothing is broken; see §2 and `docs/WIDGETS.md`. The
+Dynamic Island Live Activity does not need one and should work.
+
+**A test fails on CI but the app is fine** — read it anyway. Every failure in this suite so
+far has been a real defect; `docs/TESTING.md` §4 lists the twelve found while building it.
 
 **AltStore: "Maximum number of apps installed"** — a free Apple ID allows 3. Remove one.
 
