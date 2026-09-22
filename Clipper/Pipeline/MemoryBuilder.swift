@@ -140,19 +140,28 @@ struct MemoryBuilder {
             return "\(kind.rawValue)|subject|\(Tokenizer.normalizeName(subject))"
         }
 
+        // The *strongest* shared topic word, not a set of them: the conversation's
+        // keyword list differs from one conversation to the next, so a key built from
+        // several words would not match across conversations — and matching across
+        // conversations is exactly what makes a decision reversed an hour later supersede
+        // the earlier one instead of sitting beside it.
+        //
+        // The cost is that two genuinely different decisions about the same subject in one
+        // conversation collapse, the later superseding the earlier. That is the intended
+        // reading of a subject-keyed kind, the old revision stays readable, and the
+        // contradiction is surfaced for the user to resolve.
         let sentenceTokens = Set(Tokenizer.tokens(in: extraction.text))
-        let shared = conversationKeywords
+        let subject = conversationKeywords
+            .lazy
             .map(Tokenizer.stem)
-            .filter { sentenceTokens.contains($0) }
-            .sorted()
-            .prefix(3)
+            .first { sentenceTokens.contains($0) }
 
-        if shared.isEmpty {
+        guard let subject else {
             // No shared topic: fall back to claim keying rather than collapsing every
             // unrelated decision in the conversation into one memory.
             return Tokenizer.dedupeKey(kind: kind, subject: nil, claim: extraction.text)
         }
-        return "\(kind.rawValue)|subject|\(shared.joined(separator: "-"))"
+        return "\(kind.rawValue)|subject|\(subject)"
     }
 
     // MARK: - Text

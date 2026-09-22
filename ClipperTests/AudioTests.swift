@@ -565,10 +565,29 @@ final class AudioDownmixerTests: XCTestCase {
         let output = try XCTUnwrap(downmixer.convert(input))
         XCTAssertEqual(output.format.sampleRate, AudioDownmixer.targetSampleRate)
         XCTAssertEqual(output.format.channelCount, 1)
-        // A third of the input frames, give or take the converter's filter delay. A wide
-        // shortfall here means frames are being dropped on every buffer, which is a hole
-        // in the analysis stream rather than a rounding difference.
-        XCTAssertEqual(Double(output.frameLength), Double(samples.count) / 3, accuracy: 200)
+        // Roughly a third of the input frames. The first buffer is short by the resampling
+        // filter's own latency, which the converter pays back on the next buffer — that is
+        // what `testAStreamOfBuffersKeepsAllOfItsAudio` pins.
+        XCTAssertGreaterThan(Double(output.frameLength), Double(samples.count) / 3 * 0.8)
+        XCTAssertLessThanOrEqual(Double(output.frameLength), Double(samples.count) / 3 + 64)
+    }
+
+    /// The property that actually matters: across a continuous stream, no audio is lost.
+    /// The converter carries its filter state between calls, so the frames missing from
+    /// the first buffer arrive with the ones after it.
+    func testAStreamOfBuffersKeepsAllOfItsAudio() throws {
+        let downmixer = try XCTUnwrap(AudioDownmixer())
+        let perBuffer = TestAudio.voiced(seconds: 0.25, sampleRate: 48_000)
+
+        var produced = 0
+        for _ in 0..<8 {
+            let input = TestAudio.buffer(perBuffer, sampleRate: 48_000, channels: 1)
+            produced += Int(downmixer.convert(input)?.frameLength ?? 0)
+        }
+
+        let expected = Double(perBuffer.count * 8) / 3
+        XCTAssertEqual(Double(produced), expected, accuracy: 256,
+                       "A steady stream must come out at the full sample count")
     }
 
     func testEmptyBufferIsIgnored() throws {

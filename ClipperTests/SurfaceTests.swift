@@ -132,7 +132,22 @@ final class SnapshotTests: XCTestCase {
                                        recentSummary: "The team changed database",
                                        memoryCount: 42)
         let decoded = try encoded(snapshot)
-        XCTAssertEqual(decoded, snapshot)
+        // The wire format is millisecond-precise, which is what the staleness check needs,
+        // so the timestamps are compared to that precision rather than bit-for-bit.
+        XCTAssertEqual(decoded.phase, snapshot.phase)
+        XCTAssertEqual(decoded.speechSeconds, snapshot.speechSeconds)
+        XCTAssertEqual(decoded.pendingJobs, snapshot.pendingJobs)
+        XCTAssertEqual(decoded.isProcessing, snapshot.isProcessing)
+        XCTAssertEqual(decoded.lowConfidence, snapshot.lowConfidence)
+        XCTAssertEqual(decoded.recentMemory, snapshot.recentMemory)
+        XCTAssertEqual(decoded.recentSummary, snapshot.recentSummary)
+        XCTAssertEqual(decoded.memoryCount, snapshot.memoryCount)
+        XCTAssertEqual(try XCTUnwrap(decoded.sessionStartedAt).timeIntervalSince1970,
+                       try XCTUnwrap(snapshot.sessionStartedAt).timeIntervalSince1970,
+                       accuracy: 0.001)
+        XCTAssertEqual(decoded.updatedAt.timeIntervalSince1970,
+                       snapshot.updatedAt.timeIntervalSince1970,
+                       accuracy: 0.001)
         XCTAssertEqual(decoded.speechLabel, "12m")
     }
 

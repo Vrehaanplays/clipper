@@ -160,7 +160,9 @@ actor AnswerService {
                          assertion: earliest.assertion == .stated ? .stated : earliest.assertion,
                          confidence: earliest.confidence,
                          chains: chains,
-                         hits: outcome.hits,
+                         // Chronological, not by score: the question is about when, so the
+                         // list under the answer reads from the earliest mention onwards.
+                         hits: outcome.hits.sorted { $0.timestamp < $1.timestamp },
                          insufficientEvidence: false,
                          generator: "retrieval")
     }

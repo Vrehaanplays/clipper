@@ -216,8 +216,33 @@ struct ContentExtractor {
     /// Lemmatised through `NLTagger` so "meetings" and "meeting" are one topic. Verbs and
     /// adjectives are included because conversation topics are often not nouns
     /// ("refactoring", "expensive").
+    /// Topic words, most frequent first.
+    ///
+    /// The part-of-speech pass is the good one, but `NLTagger` returns nothing at all when
+    /// a requested scheme has no model for the text's language — which is the case for
+    /// `.lemma` in some environments, including the Simulator. Keyword extraction feeding
+    /// the brain map, the subject keys and the summariser must not quietly become a no-op
+    /// there, so a plain frequency count stands behind it. Same ordering, no model needed.
     static func keywords(in text: String, limit: Int = 8) -> [String] {
-        let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
+        var counts = taggedKeywords(in: text)
+        if counts.isEmpty { counts = frequencyKeywords(in: text) }
+
+        return counts
+            .sorted { left, right in
+                left.value != right.value ? left.value > right.value : left.key.count > right.key.count
+            }
+            .prefix(limit)
+            .map(\.key)
+    }
+
+    private static func taggedKeywords(in text: String) -> [String: Int] {
+        // Only ask for schemes this device can actually serve; an unavailable one makes
+        // the whole enumeration silent rather than degrading.
+        let available = Set(NLTagger.availableTagSchemes(for: .word, language: .english))
+        guard available.contains(.lexicalClass) else { return [:] }
+        let wantsLemma = available.contains(.lemma)
+
+        let tagger = NLTagger(tagSchemes: wantsLemma ? [.lexicalClass, .lemma] : [.lexicalClass])
         tagger.string = text
         let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .omitOther]
 
@@ -230,18 +255,28 @@ struct ContentExtractor {
             let surface = String(text[range]).lowercased()
             guard surface.count >= 4, !Tokenizer.stopwords.contains(surface) else { return true }
 
-            let lemma = tagger.tag(at: range.lowerBound, unit: .word, scheme: .lemma).0?.rawValue
+            let lemma = wantsLemma
+                ? tagger.tag(at: range.lowerBound, unit: .word, scheme: .lemma).0?.rawValue
+                : nil
             let term = (lemma?.lowercased()).flatMap { $0.count >= 3 ? $0 : nil } ?? surface
             counts[term, default: 0] += 1
             return true
         }
-
         return counts
-            .sorted { left, right in
-                left.value != right.value ? left.value > right.value : left.key.count > right.key.count
-            }
-            .prefix(limit)
-            .map(\.key)
+    }
+
+    /// Frequency of the words that are left once filler is removed. Surface forms rather
+    /// than stems, so a node in the brain map is called "postgres" and not "postgre".
+    private static func frequencyKeywords(in text: String) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive],
+                                  locale: Locale(identifier: "en_US_POSIX"))
+        for word in folded.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+            let surface = String(word)
+            guard surface.count >= 4, !Tokenizer.stopwords.contains(surface) else { continue }
+            counts[surface, default: 0] += 1
+        }
+        return counts
     }
 
     /// Do two keyword sets describe different subjects?

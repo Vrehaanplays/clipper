@@ -343,12 +343,20 @@ enum MessyCorpus {
 
     /// Close every conversation and build memories, the way the pipeline would.
     static func closeAndBuildMemories(in store: ClipperStore) async -> [MemoryDTO] {
-        let closed = await store.closeInactiveConversations(asOf: start.addingTimeInterval(9_000),
-                                                            inactiveFor: 60)
+        // The segmenter closes a conversation as soon as the next one starts, so the
+        // return value of this call is only the last one. The pipeline builds memories for
+        // each conversation as it closes, so the equivalent here is every conversation in
+        // the store, in order.
+        _ = await store.closeInactiveConversations(asOf: start.addingTimeInterval(9_000),
+                                                  inactiveFor: 60)
         let builder = MemoryBuilder()
         var built: [MemoryDTO] = []
 
-        for conversationID in closed {
+        let ordered = await store.conversations(limit: 200)
+            .sorted { $0.startedAt < $1.startedAt }
+            .map(\.id)
+
+        for conversationID in ordered {
             guard let conversation = await store.conversation(id: conversationID) else { continue }
             let extractions = await store.extractions(conversationID: conversationID)
             let text = await store.transcriptLines(conversationID: conversationID)

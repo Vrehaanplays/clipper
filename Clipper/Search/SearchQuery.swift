@@ -138,6 +138,22 @@ struct QueryParser {
     var knownNodes: [(id: UUID, name: String)] = []
     var calendar: Calendar = .current
 
+    /// Words that belong to the shape of a question rather than to its subject.
+    ///
+    /// Deliberately limited to interrogatives, pronouns and the verbs people use to ask
+    /// *about* remembering — never to nouns, which is what a subject is made of.
+    static let frameWords: Set<String> = [
+        "what", "whats", "who", "whos", "when", "where", "why", "how", "which", "whom",
+        "did", "do", "does", "was", "were", "is", "are", "am", "had", "have", "has", "been",
+        "i", "we", "you", "my", "our", "me", "us", "about", "the", "a", "an", "of", "for",
+        "decide", "decided", "decides", "decision", "decisions",
+        "say", "said", "says", "tell", "told", "talk", "talked", "talking",
+        "discuss", "discussed", "mention", "mentioned", "mentions",
+        "happen", "happened", "know", "think", "thought", "remember", "recall",
+        "everything", "anything", "something", "all", "any", "ever", "again",
+        "please", "clipper", "there", "that", "this",
+    ]
+
     func parse(_ raw: String, now: Date = Date(), limit: Int = 40) -> SearchQuery {
         var residual = raw
         var query = SearchQuery(text: raw, limit: limit)
@@ -193,7 +209,18 @@ struct QueryParser {
             }
         }
 
+        // Whatever scaffolding survived as individual words goes too. A question about a
+        // decision contains "decide" because that is how questions are phrased; leaving it
+        // in makes "what did we decide about the helicopter lease" match every decision
+        // ever recorded, which is a confident answer about something never discussed.
         query.text = cleaned
+            .split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" })
+            .filter { word in
+                let bare = word.lowercased().trimmingCharacters(
+                    in: CharacterSet.alphanumerics.inverted)
+                return !bare.isEmpty && !Self.frameWords.contains(bare)
+            }
+            .joined(separator: " ")
             .trimmingCharacters(in: CharacterSet(charactersIn: " ?.,'\"").union(.whitespacesAndNewlines))
         // Everything was scaffolding: keep the original so the search is not empty.
         if query.text.isEmpty && query.speakerIDs.isEmpty && query.nodeIDs.isEmpty {
