@@ -45,6 +45,9 @@ struct ExtractiveSummarizer: Summarizing {
     func summarize(_ input: SummarizationInput) async -> SummaryDraft? {
         let text = input.joinedText
         guard !text.isEmpty else { return nil }
+        // The floor lives here as well as in the pool, so no caller can talk the
+        // summariser into padding a single line of filler into a memory.
+        guard input.isSubstantial else { return nil }
 
         let sentences = ContentExtractor.sentences(in: text)
         guard !sentences.isEmpty else { return nil }
@@ -134,9 +137,10 @@ actor SummarizerPool {
     private var languageModelAvailable: Bool?
 
     func summarize(_ input: SummarizationInput, preferLanguageModel: Bool) async -> SummaryDraft? {
-        guard input.isSubstantial else {
-            return await extractive.summarize(input)
-        }
+        // Nothing to condense. A "summary" of one filler line is noise wearing a
+        // provenance label, and the caller treats nil as "no summary for this", which is
+        // the honest outcome.
+        guard input.isSubstantial else { return nil }
 
         if preferLanguageModel {
             if languageModelAvailable == nil {

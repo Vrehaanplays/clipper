@@ -157,7 +157,11 @@ final class SessionStoreTests: XCTestCase {
         }
         let days = await store.daysWithActivity()
         await XCTAssertEqual(days.count, 2, "Two sessions on the same day are one day")
-        await XCTAssertGreaterThan(days[0], days[1], "Newest first")
+        // Unwrapped rather than subscripted: a wrong count should fail this test, not
+        // trap and take the rest of the suite down with it.
+        let newest = try await XCTUnwrap(days.first)
+        let oldest = try await XCTUnwrap(days.dropFirst().first)
+        await XCTAssertGreaterThan(newest, oldest, "Newest first")
     }
 }
 

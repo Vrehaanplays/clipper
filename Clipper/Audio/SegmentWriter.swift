@@ -70,7 +70,7 @@ final class SegmentWriter {
         try? FileManager.default.removeItem(at: partialURL)
 
         let channels = Int(format.channelCount)
-        let settings: [String: Any] = [
+        var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: format.sampleRate,
             AVNumberOfChannelsKey: channels,
@@ -80,12 +80,25 @@ final class SegmentWriter {
         // The processing format is float32 non-interleaved at the same rate and channel
         // count as the tap buffers, so no conversion happens on our side; AVAudioFile
         // drives the hardware AAC encoder.
-        let newFile = try AVAudioFile(
-            forWriting: partialURL,
-            settings: settings,
-            commonFormat: .pcmFormatFloat32,
-            interleaved: false
-        )
+        //
+        // Not every AAC encoder accepts an explicit bit rate at every sample rate — the
+        // Simulator's rejects several the hardware encoder takes without complaint. A
+        // refused bit rate is no reason to lose the recording, so retry and let the
+        // encoder choose; the clip is slightly larger, and it exists.
+        let newFile: AVAudioFile
+        do {
+            newFile = try AVAudioFile(forWriting: partialURL,
+                                      settings: settings,
+                                      commonFormat: .pcmFormatFloat32,
+                                      interleaved: false)
+        } catch {
+            Log.audio.notice("Encoder refused the requested bit rate; using its default")
+            settings.removeValue(forKey: AVEncoderBitRateKey)
+            newFile = try AVAudioFile(forWriting: partialURL,
+                                      settings: settings,
+                                      commonFormat: .pcmFormatFloat32,
+                                      interleaved: false)
+        }
 
         // `AVAudioFile.write(from:)` raises an Objective-C exception on a format mismatch,
         // and that cannot be caught from Swift — it would take the app down mid-recording.

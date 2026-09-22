@@ -454,7 +454,7 @@ final class SpeechSegmenterTests: XCTestCase {
         XCTAssertTrue(files.isEmpty, "And must not leave files behind")
     }
 
-    func testTwoSeparatedBurstsBecomeTwoUtterances() {
+    func testTwoSeparatedBurstsBecomeTwoUtterances() throws {
         let temp = TempDirectory("two")
         defer { temp.remove() }
 
@@ -471,9 +471,12 @@ final class SpeechSegmenterTests: XCTestCase {
              into: segmenter)
 
         XCTAssertEqual(utterances.count, 2)
-        XCTAssertEqual(utterances[0].index, 1)
-        XCTAssertEqual(utterances[1].index, 2)
-        XCTAssertLessThan(utterances[0].endedAt, utterances[1].startedAt)
+        // Unwrapped, so a wrong count fails here instead of trapping.
+        let first = try XCTUnwrap(utterances.first)
+        let second = try XCTUnwrap(utterances.dropFirst().first)
+        XCTAssertEqual(first.index, 1)
+        XCTAssertEqual(second.index, 2)
+        XCTAssertLessThan(first.endedAt, second.startedAt)
     }
 
     /// Stopping mid-sentence must still keep what was captured.
@@ -562,7 +565,9 @@ final class AudioDownmixerTests: XCTestCase {
         let output = try XCTUnwrap(downmixer.convert(input))
         XCTAssertEqual(output.format.sampleRate, AudioDownmixer.targetSampleRate)
         XCTAssertEqual(output.format.channelCount, 1)
-        // A third of the input frames, give or take the converter's filter delay.
+        // A third of the input frames, give or take the converter's filter delay. A wide
+        // shortfall here means frames are being dropped on every buffer, which is a hole
+        // in the analysis stream rather than a rounding difference.
         XCTAssertEqual(Double(output.frameLength), Double(samples.count) / 3, accuracy: 200)
     }
 

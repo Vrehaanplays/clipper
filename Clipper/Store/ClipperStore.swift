@@ -110,20 +110,34 @@ actor ClipperStore {
 
     /// Days that actually have something in them, newest first — used to skip empty days
     /// in the timeline instead of making the user page through them.
+    /// Days the timeline has something to show.
+    ///
+    /// Sessions count as well as conversations: a day when Clipper listened and nobody
+    /// said anything is still a day it was running, and the timeline says so rather than
+    /// leaving a hole the user has to interpret.
     func daysWithActivity(limit: Int = 60) -> [Date] {
-        var descriptor = FetchDescriptor<ConversationRecord>(
+        var conversationDescriptor = FetchDescriptor<ConversationRecord>(
             sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
         )
-        descriptor.fetchLimit = limit * 8
-        let conversations = (try? modelContext.fetch(descriptor)) ?? []
+        conversationDescriptor.fetchLimit = limit * 8
+        var sessionDescriptor = FetchDescriptor<SessionRecord>(
+            sortBy: [SortDescriptor(\.startedAt, order: .reverse)]
+        )
+        sessionDescriptor.fetchLimit = limit * 8
+
         let calendar = Calendar.current
-        var seen: [Date] = []
-        for conversation in conversations {
-            let day = calendar.startOfDay(for: conversation.startedAt)
-            if seen.last != day, !seen.contains(day) { seen.append(day) }
-            if seen.count >= limit { break }
+        var starts = ((try? modelContext.fetch(conversationDescriptor)) ?? []).map(\.startedAt)
+        starts += ((try? modelContext.fetch(sessionDescriptor)) ?? []).map(\.startedAt)
+
+        var seen: Set<Date> = []
+        var days: [Date] = []
+        for start in starts.sorted(by: >) {
+            let day = calendar.startOfDay(for: start)
+            guard seen.insert(day).inserted else { continue }
+            days.append(day)
+            if days.count >= limit { break }
         }
-        return seen
+        return days
     }
 
     func fetchSession(_ id: UUID) -> SessionRecord? {

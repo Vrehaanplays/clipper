@@ -67,7 +67,7 @@ final class AudioDownmixer {
 
         var supplied = false
         var conversionError: NSError?
-        let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+        let fill: AVAudioConverterInputBlock = { _, inputStatus in
             if supplied {
                 inputStatus.pointee = .noDataNow
                 return nil
@@ -77,19 +77,47 @@ final class AudioDownmixer {
             return buffer
         }
 
-        switch status {
-        case .haveData, .inputRanDry:
-            return output.frameLength > 0 ? output : nil
-        case .endOfStream:
-            return nil
-        case .error:
-            Log.audio.error("Downmix failed: \(conversionError?.localizedDescription ?? "unknown")")
-            // Force a rebuild next time; a route change often lands here.
-            self.converter = nil
-            self.inputFormat = nil
-            return nil
-        @unknown default:
-            return nil
+        // The rate converter holds frames back in its own filter, so one call returns
+        // noticeably fewer than input * ratio — about 15% short at 48 kHz → 16 kHz. Dropping
+        // that remainder would punch a hole in the analysis stream on every buffer, so keep
+        // pulling until the converter has nothing left for the input it was given.
+        while output.frameLength < capacity {
+            guard let scratch = AVAudioPCMBuffer(pcmFormat: outputFormat,
+                                                 frameCapacity: capacity - output.frameLength)
+            else { break }
+
+            let status = converter.convert(to: scratch, error: &conversionError, withInputFrom: fill)
+
+            if status == .error {
+                Log.audio.error("Downmix failed: \(conversionError?.localizedDescription ?? "unknown")")
+                // Force a rebuild next time; a route change often lands here.
+                self.converter = nil
+                self.inputFormat = nil
+                return nil
+            }
+
+            append(scratch, to: output)
+            if scratch.frameLength == 0 || status != .haveData { break }
         }
+
+        return output.frameLength > 0 ? output : nil
+    }
+
+    /// Copy `source`'s frames onto the end of `destination`. Both are float32
+    /// non-interleaved in `outputFormat`, so this is a per-channel memcpy.
+    private func append(_ source: AVAudioPCMBuffer, to destination: AVAudioPCMBuffer) {
+        guard source.frameLength > 0,
+              let from = source.floatChannelData,
+              let into = destination.floatChannelData else { return }
+
+        let room = destination.frameCapacity - destination.frameLength
+        let frames = min(source.frameLength, room)
+        guard frames > 0 else { return }
+
+        for channel in 0..<Int(destination.format.channelCount) {
+            into[channel].advanced(by: Int(destination.frameLength))
+                .update(from: from[channel], count: Int(frames))
+        }
+        destination.frameLength += frames
     }
 }

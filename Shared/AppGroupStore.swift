@@ -39,7 +39,10 @@ public struct AppGroupStore {
         guard let url = snapshotURL else { return false }
         do {
             let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
+            // Fractional seconds, so a snapshot survives the round trip unchanged. Plain
+            // ISO 8601 truncates to the second, and the staleness check compares the
+            // decoded timestamp against the one the app wrote.
+            encoder.dateEncodingStrategy = .iso8601WithFractionalSeconds
             let data = try encoder.encode(snapshot)
             let temp = url.deletingLastPathComponent()
                 .appendingPathComponent(".snapshot-\(UUID().uuidString).tmp")
@@ -61,7 +64,7 @@ public struct AppGroupStore {
         guard let url = snapshotURL,
               let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .iso8601WithFractionalSeconds
         return try? decoder.decode(ClipperSnapshot.self, from: data)
     }
 }

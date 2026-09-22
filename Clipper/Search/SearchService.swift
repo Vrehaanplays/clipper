@@ -27,6 +27,9 @@ actor SearchService {
     /// far less than the store.
     private let candidateLimit = 160
     private let perTokenLimit = 400
+    /// Cosine similarity a document must reach to count as an answer when no term matched.
+    /// Set where paraphrases of the same subject survive and unrelated material does not.
+    private static let semanticEvidenceFloor = 0.45
 
     /// Rolling record of measured latencies, shown in Diagnostics.
     private var latencies: [TimeInterval] = []
@@ -43,6 +46,15 @@ actor SearchService {
         let tokens = Tokenizer.tokens(in: query.text)
         var outcome = SearchOutcome.empty(query)
         outcome.tokens = tokens
+
+        // A blank box must not dump the database, and a query of nothing but stopwords is
+        // a blank box. Filters alone are a legitimate query — that is how the timeline and
+        // the people screens browse — so only the case with neither is refused.
+        if tokens.isEmpty, !query.hasFilters {
+            outcome.elapsed = Self.seconds(since: started)
+            record(outcome.elapsed)
+            return outcome
+        }
 
         // Lexical pass.
         var lexical: [UUID: Double] = [:]
@@ -69,6 +81,12 @@ actor SearchService {
         outcome.lexicalCandidates = lexical.count
 
         // Candidate set.
+        //
+        // When nothing matched a term, a hit has to earn its place on meaning alone.
+        // Without that requirement the fallback below degenerates into "here are your most
+        // recent notes", which is how a question about something never discussed would come
+        // back with confident, unrelated evidence.
+        let requiresSemanticEvidence = lexical.isEmpty && !tokens.isEmpty
         var candidates: [IndexedDocumentSnapshot]
         if lexical.isEmpty {
             // Nothing matched a term. Either the query is only filters, or it is phrased
@@ -98,6 +116,15 @@ actor SearchService {
         var queryVector: [Float] = []
         if query.semanticEnabled, !query.text.isEmpty {
             queryVector = await Embedder.shared.vector(for: query.text)
+        }
+
+        // No terms matched and no usable vector (word embeddings unavailable on this OS,
+        // or the query folded away to nothing) means there is no evidence either way. Say
+        // so rather than ranking whatever happens to be recent.
+        if requiresSemanticEvidence, queryVector.isEmpty {
+            outcome.elapsed = Self.seconds(since: started)
+            record(outcome.elapsed)
+            return outcome
         }
 
         let maximumLexical = lexical.values.max() ?? 1
@@ -141,6 +168,10 @@ actor SearchService {
             case .uncertain: score *= 0.92
             default: break
             }
+
+            // In the semantic-only path the similarity *is* the evidence, so a weak
+            // resemblance is not a result.
+            if requiresSemanticEvidence, semanticScore < Self.semanticEvidenceFloor { continue }
 
             guard score > 0.02 else { continue }
 

@@ -76,9 +76,14 @@ extension ClipperStore {
                 ? nil : VectorMath.encode(candidate.embedding)
             document = existing
 
+            // Fetch and delete rather than `delete(model:where:)`: the batch form does
+            // not reliably account for the rows this same transaction is about to insert,
+            // which left an edited line still matching its old wording. A document has
+            // tens of postings, so the explicit fetch costs nothing.
             let documentID = existing.id
-            try? modelContext.delete(model: TokenPostingRecord.self,
-                                     where: #Predicate { $0.documentID == documentID })
+            let stale = (try? modelContext.fetch(FetchDescriptor<TokenPostingRecord>(
+                predicate: #Predicate { $0.documentID == documentID }))) ?? []
+            for posting in stale { modelContext.delete(posting) }
         } else {
             let fresh = IndexedDocumentRecord(kind: candidate.kind,
                                               refID: candidate.refID,

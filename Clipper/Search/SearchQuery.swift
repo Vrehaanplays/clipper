@@ -16,6 +16,15 @@ struct SearchQuery: Hashable, Sendable {
     var limit: Int = 40
     var semanticEnabled: Bool = true
 
+    /// Whether anything other than free text narrows this query. Filters alone are a
+    /// valid search — browsing one speaker or one day — so search only refuses a query
+    /// that has neither usable terms nor filters.
+    var hasFilters: Bool {
+        !kinds.isEmpty || !speakerIDs.isEmpty || !nodeIDs.isEmpty || !assertions.isEmpty
+            || from != nil || to != nil || conversationID != nil
+            || minimumConfidence > 0 || minimumImportance > 0
+    }
+
     var isEmpty: Bool {
         text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && speakerIDs.isEmpty && nodeIDs.isEmpty && from == nil && kinds.isEmpty

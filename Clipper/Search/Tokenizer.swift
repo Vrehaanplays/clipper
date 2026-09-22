@@ -49,20 +49,49 @@ enum Tokenizer {
 
     /// Conservative suffix stripping. Only applied to words long enough that the strip
     /// cannot collide with a different word.
+    ///
+    /// Plural removal runs *first* and the verb endings are then applied to the result.
+    /// Treating them as alternatives is what broke earlier: "meetings" lost only its "s"
+    /// and stopped at "meeting", while "meeting" went on to "meet", so a search for one
+    /// never found the other. Chaining the two passes makes the singular and the plural
+    /// land on the same term, which is the entire point of stemming here.
     static func stem(_ token: String) -> String {
         guard token.count > 4 else { return token }
-        for suffix in ["ing", "edly", "ies", "ied"] where token.hasSuffix(suffix) {
-            let stripped = String(token.dropLast(suffix.count))
-            if stripped.count >= 3 {
-                return suffix == "ies" || suffix == "ied" ? stripped + "y" : stripped
-            }
+        return stripVerbEnding(stripPlural(token))
+    }
+
+    /// Sibilant plurals ("boxes", "churches") lose "es"; everything else loses just the
+    /// "s", so "deadlines" becomes "deadline" rather than "deadlin".
+    private static let sibilantPluralEndings = ["sses", "shes", "ches", "xes", "zes", "oes"]
+
+    private static func stripPlural(_ token: String) -> String {
+        guard token.count > 4 else { return token }
+        if token.hasSuffix("ies") {
+            let stripped = String(token.dropLast(3))
+            if stripped.count >= 3 { return stripped + "y" }
+            return token
         }
-        for suffix in ["ed", "ly", "es"] where token.hasSuffix(suffix) {
-            let stripped = String(token.dropLast(suffix.count))
+        for ending in sibilantPluralEndings where token.hasSuffix(ending) {
+            let stripped = String(token.dropLast(2))
+            if stripped.count >= 3 { return stripped }
+        }
+        if token.hasSuffix("s") && !token.hasSuffix("ss") && !token.hasSuffix("us") {
+            let stripped = String(token.dropLast())
             if stripped.count >= 4 { return stripped }
         }
-        if token.hasSuffix("s") && !token.hasSuffix("ss") {
-            let stripped = String(token.dropLast())
+        return token
+    }
+
+    private static func stripVerbEnding(_ token: String) -> String {
+        guard token.count > 4 else { return token }
+        for suffix in ["ing", "edly", "ied"] where token.hasSuffix(suffix) {
+            let stripped = String(token.dropLast(suffix.count))
+            if stripped.count >= 3 {
+                return suffix == "ied" ? stripped + "y" : stripped
+            }
+        }
+        for suffix in ["ed", "ly"] where token.hasSuffix(suffix) {
+            let stripped = String(token.dropLast(suffix.count))
             if stripped.count >= 4 { return stripped }
         }
         return token
