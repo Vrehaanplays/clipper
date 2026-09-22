@@ -58,21 +58,8 @@ struct SpeakerManagerView: View {
                 Text("Matching is based on how a voice sounds, not on who it is. It can split one person into two groups or merge two people into one — naming and merging are how you correct it, and both apply retroactively.")
             }
 
-            if !pipeline.speakersAwaitingNames.isEmpty {
-                Section("Waiting to be named") {
-                    ForEach(pipeline.speakersAwaitingNames) { speaker in
-                        Button {
-                            pipeline.namingPrompt = speaker
-                        } label: {
-                            HStack {
-                                SpeakerRow(speaker: speaker)
-                                Image(systemName: "questionmark.circle")
-                                    .foregroundStyle(.accentColor)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+            AwaitingNamesSection(speakers: pipeline.speakersAwaitingNames) { speaker in
+                pipeline.namingPrompt = speaker
             }
         }
         .listStyle(.insetGrouped)
@@ -94,6 +81,35 @@ struct SpeakerManagerView: View {
     private func load() async {
         speakers = await store.speakers()
         isLoading = false
+    }
+}
+
+/// Its own view rather than an inline branch: `body` was long enough that the type
+/// checker resolved the `ForEach` to the wrong overload, and a named view with explicit
+/// parameter types is both cheaper to compile and easier to read.
+private struct AwaitingNamesSection: View {
+    let speakers: [SpeakerDTO]
+    let onTap: (SpeakerDTO) -> Void
+
+    var body: some View {
+        if speakers.isEmpty {
+            EmptyView()
+        } else {
+            Section("Waiting to be named") {
+                ForEach(speakers, id: \.id) { speaker in
+                    Button {
+                        onTap(speaker)
+                    } label: {
+                        HStack {
+                            SpeakerRow(speaker: speaker)
+                            Image(systemName: "questionmark.circle")
+                                .foregroundStyle(.accentColor)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
 

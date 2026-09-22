@@ -35,7 +35,7 @@ struct SoundProfile: Equatable {
 /// Its job is not to gate speech — that is the VAD's — but to *down-rank* audio that is
 /// obviously not conversation. Sung vocals will always score as speech; no claim is made
 /// otherwise.
-final class SoundClassifier {
+final class SoundClassifier: Sendable {
     /// Labels in Apple's `version1` classifier that mean "this is not someone talking to
     /// me", checked as substrings because the taxonomy is large and versioned.
     private static let musicFragments = [

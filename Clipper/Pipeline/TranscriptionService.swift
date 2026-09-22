@@ -1,5 +1,5 @@
 import Foundation
-import Speech
+@preconcurrency import Speech
 
 struct TranscriptionOutput: Hashable, Sendable {
     var text: String
@@ -134,9 +134,8 @@ final class OnDeviceSpeechTranscriber: Transcribing {
             // A recognition task can call back more than once, or never. The box makes
             // resuming exactly once a property of the code rather than a hope.
             let box = ContinuationBox(continuation)
-            var task: SFSpeechRecognitionTask?
 
-            task = recognizer.recognitionTask(with: request) { result, error in
+            let task = recognizer.recognitionTask(with: request) { result, error in
                 if let error {
                     box.fail(TranscriptionError.failed(error.localizedDescription))
                     return
@@ -145,14 +144,9 @@ final class OnDeviceSpeechTranscriber: Transcribing {
                 box.succeed(Self.output(from: result.bestTranscription, locale: locale))
             }
 
-            guard task != nil else {
-                box.fail(TranscriptionError.recognizerUnavailable)
-                return
-            }
-
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + deadline) {
                 guard box.isPending else { return }
-                task?.cancel()
+                task.cancel()
                 box.fail(TranscriptionError.timedOut)
             }
         }
@@ -195,7 +189,7 @@ final class OnDeviceSpeechTranscriber: Transcribing {
 }
 
 /// Resume-exactly-once wrapper for a callback API that may fire zero, one or many times.
-private final class ContinuationBox {
+private final class ContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<TranscriptionOutput, Error>?
 
